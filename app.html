@@ -99,6 +99,7 @@ header.top p { margin: 0; color: var(--muted); max-width: 60ch; }
   display: grid; grid-template-rows: 1fr 1fr; place-items: center; padding: 2px 0; line-height: 1;
 }
 .key .t, .key .b { font-size: 13px; }
+.key .t { align-self: end; } .key .b { align-self: start; }
 .key.single { grid-template-rows: 1fr; font-size: 17px; }
 .key .dim { opacity: 0.35; }
 .key.sel { outline: 3px solid var(--cloth); outline-offset: 0; }
@@ -194,7 +195,7 @@ textarea.io { width: 100%; min-height: 120px; resize: vertical; font-family: var
     <section class="kb" aria-label="Your typewriter keyboard">
       <div class="kb-head">
         <span class="brush">Brush <output id="brushOut">#</output></span>
-        <span>Click a key to choose the character you draw with. Hold the green <b>Shift</b> for the top character. Typing a key on your computer works too.</span>
+        <span>Click the top half of a key for its Shift character (capitals, symbols), the bottom half for the plain one. The green <b>Shift</b> locks to the top row. Typing on your computer works too.</span>
       </div>
       <div class="kb-rows" id="kbRows"></div>
     </section>
@@ -472,11 +473,14 @@ function buildKeyboard() {
     if (i === 2 || i === 3) { const sh = document.createElement('button'); sh.className = 'key shift wide'; sh.textContent = 'Shift'; sh.setAttribute('aria-pressed', S.shift); sh.onclick = toggleShift; r.appendChild(sh); }
     row.forEach(([s, u]) => {
       const k = document.createElement('button'); k.className = 'key'; k.dataset.s = s; k.dataset.u = u;
-      const isLetter = /[A-Z]/.test(s);
-      if (isLetter) { k.classList.add('single'); k.textContent = S.shift ? s : u; }
-      else k.innerHTML = `<span class="t ${S.shift ? '' : 'dim'}">${esc(s)}</span><span class="b ${S.shift ? 'dim' : ''}">${esc(u)}</span>`;
-      k.title = `${u}  ·  Shift: ${s}`;
-      k.onclick = () => setBrush(S.shift ? s : u);
+      k.innerHTML = `<span class="t ${S.shift ? '' : 'dim'}">${esc(s)}</span><span class="b ${S.shift ? 'dim' : ''}">${esc(u)}</span>`;
+      k.title = `${u}  ·  Shift: ${s}  (click top or bottom half)`;
+      // Top half types the shifted character, bottom half the unshifted one; Shift flips the bottom half too.
+      k.onclick = e => {
+        const r = k.getBoundingClientRect();
+        const top = e.detail === 0 ? S.shift : (e.clientY - r.top) < r.height / 2;
+        setBrush(top || S.shift ? s : u);
+      };
       r.appendChild(k);
     });
     wrap.appendChild(r);
