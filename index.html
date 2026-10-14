@@ -25,6 +25,7 @@
   --accent-ink: #ffffff;
   --cloth: #e3b737;        /* mustard cloth */
   --warn: #b5482f;
+  --ribbon: #c0242c;      /* red half of the ribbon */
   --font-mono: "Courier Prime", "Courier New", Courier, monospace;
   --font-ui: "Archivo", "Helvetica Neue", Arial, sans-serif;
   --r: 6px;
@@ -34,14 +35,14 @@
     --bg: #151918; --panel: #1e2423; --line: #333c3a; --ink: #e5ebe9; --muted: #95a29e;
     --paper: #232927; --paper-grid: #2a3130; --paper-grid-strong: #36403e;
     --key: #2e3432; --key-edge: #1a1f1e; --accent: #79ad9f; --accent-ink: #0f1514;
-    --cloth: #d9b04a; --warn: #e07a5f; color-scheme: dark;
+    --cloth: #d9b04a; --warn: #e07a5f; --ribbon: #ff5a5f; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #151918; --panel: #1e2423; --line: #333c3a; --ink: #e5ebe9; --muted: #95a29e;
   --paper: #232927; --paper-grid: #2a3130; --paper-grid-strong: #36403e;
   --key: #2e3432; --key-edge: #1a1f1e; --accent: #79ad9f; --accent-ink: #0f1514;
-  --cloth: #d9b04a; --warn: #e07a5f; color-scheme: dark;
+  --cloth: #d9b04a; --warn: #e07a5f; --ribbon: #ff5a5f; color-scheme: dark;
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -89,7 +90,16 @@ header.top p { margin: 0; color: var(--muted); max-width: 60ch; }
 .status { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; min-height: 1.4em; }
 .status .msg { color: var(--warn); font-weight: 600; }
 .status .note { color: var(--ink); }
-.bad { color: var(--warn); font-weight: 700; }
+.bad { color: var(--warn); font-weight: 700; text-decoration: underline wavy; text-underline-offset: 3px; }
+.ink-red { color: var(--ribbon); }
+.lever { padding: 1px 7px; border-radius: 4px; font-family: var(--font-ui); font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; align-self: center; }
+.lever.red { background: var(--ribbon); color: #fff; }
+.lever.black { background: var(--ink); color: var(--bg); }
+.ribbon { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.ribbon button { border: 0; padding: 5px 10px; background: var(--paper); font-size: 12px; font-weight: 600; display: inline-flex; gap: 6px; align-items: center; }
+.ribbon button i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.ribbon button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.brush output.red { color: var(--ribbon); }
 .fixbar { border: 1px solid var(--warn); border-radius: var(--r); background: var(--panel); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
 .fixbar h2 { margin: 0; font-size: 13px; font-weight: 700; color: var(--warn); }
 .fixbar p { margin: 0; font-size: 12px; color: var(--muted); }
@@ -185,6 +195,7 @@ textarea.desc { width: 100%; min-height: 64px; resize: vertical; padding: 8px; b
   <div class="row">
     <button class="btn" id="undo" title="Undo (Ctrl+Z)">Undo</button>
     <button class="btn" id="redo" title="Redo (Ctrl+Shift+Z)">Redo</button>
+    <button class="btn" id="loadStar">Star letterhead</button>
     <button class="btn" id="clear">Clear sheet</button>
     <button class="btn primary" id="typeMode">Start typing guide</button>
   </div>
@@ -227,6 +238,7 @@ textarea.desc { width: 100%; min-height: 64px; resize: vertical; padding: 8px; b
     <section class="kb" aria-label="Your typewriter keyboard">
       <div class="kb-head">
         <span class="brush">Brush <output id="brushOut">#</output></span>
+        <span class="ribbon" role="group" aria-label="Ribbon color"><button id="inkBlack" aria-pressed="true"><i style="background:var(--ink)"></i>Black</button><button id="inkRed" aria-pressed="false"><i style="background:var(--ribbon)"></i>Red</button></span>
         <span>Click the top half of a key for its Shift character (capitals, symbols), the bottom half for the plain one. The green <b>Shift</b> locks to the top row. Typing on your computer works too.</span>
       </div>
       <div class="kb-rows" id="kbRows"></div>
@@ -265,7 +277,7 @@ textarea.desc { width: 100%; min-height: 64px; resize: vertical; padding: 8px; b
     <section class="card">
       <h2>Typing guide · current line</h2>
       <div class="guide-line" id="guide"></div>
-      <div class="legend">Highlighted characters like <u>#</u> need Shift. Trailing spaces are dropped; just hit return.</div>
+      <div class="legend">Highlighted characters like <u>#</u> need Shift. <span class="lever red">Lever to red</span> means flip the ribbon selector. Trailing spaces are dropped; just hit return.</div>
     </section>
 
     <section class="card">
@@ -334,8 +346,8 @@ const store = {
 };
 
 // ---- State ----
-const S = { cols: 60, rows: 36, pitch: 10, spacing: 1, zoom: 1, grid: [], tool: 'pencil', brush: '#', shift: false,
-            hover: null, cursor: null, preview: null, typeLine: 0, highlight: null };
+const S = { cols: 65, rows: 20, pitch: 10, spacing: 1, zoom: 1, grid: [], tool: 'pencil', brush: '#', shift: false,
+            hover: null, cursor: null, preview: null, typeLine: 0, highlight: null, ink: 'black', red: new Set() };
 const undoStack = [], redoStack = [];
 
 const blank = (c, r) => Array.from({ length: r }, () => Array(c).fill(' '));
@@ -350,41 +362,24 @@ function fromText(txt, c, r) {
   return g;
 }
 
-const SAMPLE = [
-'',
-'                         .',
-'                         :',
-'                 .       :       .',
-"                  '.     :     .'",
-"                    '. ##### .'",
-'                     ##     ##',
-'           . . . .  #   @ @   #  . . . .',
-'                    #  (   )  #',
-"                     ## '-' ##",
-"                    .' ##### '.",
-"                  .'     :     '.",
-"                 '       :       '",
-'                         :',
-"                         '",
-'',
-'           +----------------------------+',
-'           I  T Y P E D   B Y   H A N D  I',
-'           +----------------------------+',
-].join('\n');
+const SAMPLE = "   .     '        +     .       !       .    '     !      .   '\n      .             .    '   '. ! .'   .   +     -(*)-      *\n  .    *    !      '   .    -- (@) --    .    .    !    '     .\n    '     -(*)-   .      +   .' ! '.   .    '         .     *\n .     +    !       .      '    !    +     .     .       '     .\n     '       .        .       '   .      '     *     .       '";
+const SAMPLE_RED = ["1,50", "1,51", "1,52", "2,31", "2,32", "2,33", "3,11", "3,12", "3,13"];
 
 function snapshot() { return S.grid.map(r => r.join('')); }
-function pushUndo() { S.highlight = null; undoStack.push({ cols: S.cols, rows: S.rows, g: snapshot() }); if (undoStack.length > 200) undoStack.shift(); redoStack.length = 0; }
+const rk = (x, y) => y + ',' + x;
+const isRed = (x, y) => S.red.has(rk(x, y));
+function pushUndo() { S.highlight = null; undoStack.push({ cols: S.cols, rows: S.rows, g: snapshot(), r: [...S.red] }); if (undoStack.length > 200) undoStack.shift(); redoStack.length = 0; }
 function restore(st) {
-  S.cols = st.cols; S.rows = st.rows; S.grid = st.g.map(l => [...l]);
+  S.cols = st.cols; S.rows = st.rows; S.grid = st.g.map(l => [...l]); S.red = new Set(st.r || []);
   $('cols').value = S.cols; $('rows').value = S.rows; resize(); save();
 }
-function undo() { if (!undoStack.length) return; redoStack.push({ cols: S.cols, rows: S.rows, g: snapshot() }); restore(undoStack.pop()); }
-function redo() { if (!redoStack.length) return; undoStack.push({ cols: S.cols, rows: S.rows, g: snapshot() }); restore(redoStack.pop()); }
+function undo() { if (!undoStack.length) return; redoStack.push({ cols: S.cols, rows: S.rows, g: snapshot(), r: [...S.red] }); restore(undoStack.pop()); }
+function redo() { if (!redoStack.length) return; undoStack.push({ cols: S.cols, rows: S.rows, g: snapshot(), r: [...S.red] }); restore(redoStack.pop()); }
 
 let saveT;
 function save() {
   clearTimeout(saveT);
-  saveT = setTimeout(() => store.set('twa.v1', { cols: S.cols, rows: S.rows, pitch: S.pitch, spacing: S.spacing, zoom: S.zoom, brush: S.brush, g: snapshot(), typeLine: S.typeLine }), 250);
+  saveT = setTimeout(() => store.set('twa.v2', { r: [...S.red], ink: S.ink, cols: S.cols, rows: S.rows, pitch: S.pitch, spacing: S.spacing, zoom: S.zoom, brush: S.brush, g: snapshot(), typeLine: S.typeLine }), 250);
 }
 
 // ---- Canvas geometry ----
@@ -404,7 +399,7 @@ function resize() {
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 function draw() {
   const W = S.cols * cw, H = S.rows * ch;
-  const C = { paper: css('--paper'), g: css('--paper-grid'), gs: css('--paper-grid-strong'), ink: css('--ink'), muted: css('--muted'), acc: css('--accent'), cloth: css('--cloth'), panel: css('--panel'), warn: css('--warn') };
+  const C = { paper: css('--paper'), g: css('--paper-grid'), gs: css('--paper-grid-strong'), ink: css('--ink'), muted: css('--muted'), acc: css('--accent'), cloth: css('--cloth'), panel: css('--panel'), warn: css('--warn'), ribbon: css('--ribbon') };
   ctx.clearRect(0, 0, cv.width, cv.height);
   ctx.fillStyle = C.panel; ctx.fillRect(0, 0, GUTTER + W + 8, RULER + H + 8);
   // ruler (like the typewriter's paper scale)
@@ -437,8 +432,8 @@ function draw() {
     if (pv && pv.has(y * S.cols + x)) { c = pv.get(y * S.cols + x); isPv = true; }
     if (c === ' ') continue;
     const bad = !ALLOWED.has(c);
-    if (bad) { ctx.globalAlpha = 0.16; ctx.fillStyle = C.warn; ctx.fillRect(x * cw, y * ch, cw, ch); ctx.globalAlpha = 1; }
-    ctx.fillStyle = isPv ? C.acc : bad ? C.warn : C.ink;
+    if (bad) { ctx.globalAlpha = 0.16; ctx.fillStyle = C.warn; ctx.fillRect(x * cw, y * ch, cw, ch); ctx.globalAlpha = 1; ctx.fillStyle = C.warn; ctx.fillRect(x * cw + 1, (y + 1) * ch - 2, cw - 2, 2); }
+    ctx.fillStyle = isPv ? (S.ink === 'red' ? C.ribbon : C.acc) : bad ? C.warn : isRed(x, y) ? C.ribbon : C.ink;
     ctx.fillText(c, x * cw + cw / 2, y * ch + ch / 2 + fs * 0.04);
   }
   ctx.restore();
@@ -471,15 +466,20 @@ function rectCells(a, b, mode) {
   return m;
 }
 function flood(x, y, to) {
-  const from = S.grid[y][x]; if (from === to) return;
-  const st = [[x, y]];
+  const from = S.grid[y][x], fromRed = isRed(x, y); if (from === to && fromRed === (S.ink === 'red' && to !== ' ')) return;
+  const st = [[x, y]], seen = new Set();
   while (st.length) {
     const [cx, cy] = st.pop();
-    if (cx < 0 || cy < 0 || cx >= S.cols || cy >= S.rows || S.grid[cy][cx] !== from) continue;
-    S.grid[cy][cx] = to; st.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
+    if (cx < 0 || cy < 0 || cx >= S.cols || cy >= S.rows || S.grid[cy][cx] !== from || isRed(cx, cy) !== fromRed || seen.has(rk(cx, cy))) continue;
+    seen.add(rk(cx, cy));
+    setCell(cx, cy, to); st.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
   }
 }
-const setCell = (x, y, c) => { if (x >= 0 && y >= 0 && x < S.cols && y < S.rows) S.grid[y][x] = c; };
+const setCell = (x, y, c) => {
+  if (x < 0 || y < 0 || x >= S.cols || y >= S.rows) return;
+  S.grid[y][x] = c;
+  if (c !== ' ' && S.ink === 'red') S.red.add(rk(x, y)); else S.red.delete(rk(x, y));
+};
 
 // ---- Pointer ----
 function cellAt(e) {
@@ -497,7 +497,7 @@ cv.addEventListener('pointerdown', e => {
   else if (t === 'line' || t === 'rect' || t === 'box') { drag = { t, start: c }; updatePreview(c); }
   else if (t === 'fill') { pushUndo(); flood(c.x, c.y, S.brush); }
   else if (t === 'text') { S.cursor = { ...c, home: c.x }; }
-  else if (t === 'pick') { setBrush(S.grid[c.y][c.x] === ' ' ? S.brush : S.grid[c.y][c.x]); }
+  else if (t === 'pick') { if (S.grid[c.y][c.x] !== ' ') { setBrush(S.grid[c.y][c.x]); setInk(isRed(c.x, c.y) ? 'red' : 'black'); } }
   if (t !== 'text') S.cursor = null;
   S.hover = c; draw(); updateGuide(); save();
 });
@@ -523,6 +523,12 @@ cv.addEventListener('pointerup', () => {
 });
 
 // ---- Keyboard palette ----
+function setInk(ink) {
+  S.ink = ink === 'red' ? 'red' : 'black';
+  $('inkBlack').setAttribute('aria-pressed', S.ink === 'black'); $('inkRed').setAttribute('aria-pressed', S.ink === 'red');
+  $('brushOut').classList.toggle('red', S.ink === 'red'); save();
+}
+$('inkBlack').onclick = () => setInk('black'); $('inkRed').onclick = () => setInk('red');
 function setBrush(c) {
   if (!ALLOWED.has(c)) return;
   S.brush = c; $('brushOut').textContent = c === ' ' ? '␣' : c;
@@ -608,31 +614,42 @@ document.addEventListener('keydown', e => {
 document.addEventListener('keyup', e => { if (e.key === 'Shift' && S.shift) { S.shift = false; buildKeyboard(); } });
 
 // ---- Typing guide ----
-function runs(line) {
-  const t = line.replace(/\s+$/, ''); const out = [];
-  let i = 0;
+// Break line y into typing steps; a lever chip appears wherever the ribbon color changes.
+function runs(y) {
+  const row = S.grid[y], t = row.join('').replace(/\s+$/, ''); const out = [];
+  let ink = 'black', i = 0;
   while (i < t.length) {
-    let j = i; while (j < t.length && t[j] === t[i]) j++;
-    const n = j - i, c = t[i];
-    if (c === ' ') out.push({ type: 'sp', n });
-    else if (n >= 4) out.push({ type: 'rep', c, n });
-    else { const last = out[out.length - 1]; if (last && last.type === 'lit') last.s += c.repeat(n); else out.push({ type: 'lit', s: c.repeat(n) }); }
+    const c = t[i], red = c !== ' ' && isRed(i, y);
+    let j = i; while (j < t.length && t[j] === c && (c === ' ' || isRed(j, y) === red)) j++;
+    const n = j - i;
+    if (c === ' ') { if (ink === 'red') { out.push({ type: 'lever', ink: 'black' }); ink = 'black'; } out.push({ type: 'sp', n }); i = j; continue; }
+    const want = red ? 'red' : 'black';
+    if (want !== ink) { out.push({ type: 'lever', ink: want }); ink = want; }
+    const last = out[out.length - 1];
+    if (n >= 4) out.push({ type: 'rep', c, n, red });
+    else if (last && last.type === 'lit' && last.red === red) last.s += c.repeat(n);
+    else out.push({ type: 'lit', s: c.repeat(n), red });
     i = j;
   }
+  if (ink === 'red') out.push({ type: 'lever', ink: 'black' });
   return out;
 }
-const mark = s => [...s].map(c => !ALLOWED.has(c) ? `<span class="bad" title="Not on your typewriter">${esc(c)}</span>` : needsShift(c) ? `<u>${esc(c)}</u>` : esc(c)).join('');
-function runsHTML(line) {
-  const r = runs(line);
+const markChar = (c, red) => !ALLOWED.has(c) ? `<span class="bad" title="Not on your typewriter">${esc(c)}</span>`
+  : `<span${red ? ' class="ink-red"' : ''}>${needsShift(c) ? `<u>${esc(c)}</u>` : esc(c)}</span>`;
+const mark = (s, red) => [...s].map(c => markChar(c, red)).join('');
+const markRow = y => { const t = S.grid[y].join('').replace(/\s+$/, ''); return [...t].map((c, x) => c === ' ' ? ' ' : markChar(c, isRed(x, y))).join(''); };
+function runsHTML(y) {
+  const r = runs(y);
   if (!r.length) return '<span class="run sp">Blank line: just return</span>';
   return r.map(x => x.type === 'sp' ? `<span class="run sp">${x.n} space${x.n > 1 ? 's' : ''}</span>`
-    : x.type === 'rep' ? `<span class="run rep">${mark(x.c)} × ${x.n}</span>`
-    : `<span class="run">${mark(x.s)}</span>`).join('');
+    : x.type === 'lever' ? `<span class="lever ${x.ink}">Lever to ${x.ink}</span>`
+    : x.type === 'rep' ? `<span class="run rep">${mark(x.c, x.red)} × ${x.n}</span>`
+    : `<span class="run">${mark(x.s, x.red)}</span>`).join('');
 }
 function updateGuide() {
   const y = S.cursor ? S.cursor.y : S.hover ? S.hover.y : null;
   if (y == null) { $('guide').innerHTML = '<span class="legend">Hover over a line to see how to type it.</span>'; return; }
-  $('guide').innerHTML = `<span class="run sp">Line ${y + 1}</span>` + runsHTML(S.grid[y].join(''));
+  $('guide').innerHTML = `<span class="run sp">Line ${y + 1}</span>` + runsHTML(y);
 }
 
 function lastLine() { let n = S.rows; while (n > 0 && !S.grid[n - 1].join('').trim()) n--; return Math.max(n, 1); }
@@ -648,8 +665,8 @@ function renderTyping() {
   $('tLineNo').innerHTML = `Line ${y + 1} <small>of ${total}</small>`;
   $('tProg').style.width = `${(y / Math.max(1, total - 1)) * 100}%`;
   const show = i => i >= 0 && i < S.rows ? esc(S.grid[i].join('').replace(/\s+$/, '')) : '';
-  $('tPre').innerHTML = `<span class="ctx">${show(y - 1)}</span>\n${mark(S.grid[y].join('').replace(/\s+$/, '')) || ' '}\n<span class="ctx">${show(y + 1)}</span>`;
-  $('tGuide').innerHTML = runsHTML(S.grid[y].join(''));
+  $('tPre').innerHTML = `<span class="ctx">${show(y - 1)}</span>\n${markRow(y) || ' '}\n<span class="ctx">${show(y + 1)}</span>`;
+  $('tGuide').innerHTML = runsHTML(y);
   $('tPrev').disabled = y === 0; $('tNext').textContent = y >= total - 1 ? 'Done' : 'Next line →';
   save();
 }
@@ -685,7 +702,7 @@ let clearArmed = false;
 $('clear').onclick = () => {
   if (!clearArmed) { clearArmed = true; $('clear').textContent = 'Click again to clear'; setTimeout(() => { clearArmed = false; $('clear').textContent = 'Clear sheet'; }, 3000); return; }
   clearArmed = false; $('clear').textContent = 'Clear sheet';
-  pushUndo(); S.grid = blank(S.cols, S.rows); S.typeLine = 0; draw(); updateGuide(); save();
+  pushUndo(); S.grid = blank(S.cols, S.rows); S.red.clear(); S.typeLine = 0; $('msg').textContent = ''; $('msg').className = 'msg'; draw(); updateGuide(); save();
 };
 
 // ---- Text in / out ----
@@ -700,7 +717,7 @@ $('importBtn').onclick = () => {
   const clean = raw.replace(/\t/g, '    ');
   const lines = clean.split(/\r?\n/);
   const w = Math.min(160, Math.max(S.cols, ...lines.map(l => l.length))), h = Math.min(200, Math.max(S.rows, lines.length));
-  pushUndo(); S.cols = w; S.rows = h; S.grid = fromText(clean, w, h);
+  pushUndo(); S.cols = w; S.rows = h; S.grid = fromText(clean, w, h); S.red.clear();
   $('cols').value = w; $('rows').value = h; resize(); updateGuide(); save();
   const bad = countBad();
   if (bad) flash(`Loaded. ${bad} character${bad > 1 ? 's' : ''} your typewriter can't type are in red.`);
@@ -779,7 +796,7 @@ function convert() {
   const ramp = [...$('ramp').value]; const B = +$('imgB').value, Cn = +$('imgC').value, inv = $('imgInv').checked;
   const f = (259 * (Cn + 255)) / (255 * (259 - Cn));
   pushUndo();
-  S.cols = cols; S.rows = rows; S.grid = blank(cols, rows);
+  S.cols = cols; S.rows = rows; S.grid = blank(cols, rows); S.red.clear();
   for (let yy = 0; yy < rows; yy++) for (let xx = 0; xx < cols; xx++) {
     const i = (yy * cols + xx) * 4;
     let l = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
@@ -859,7 +876,7 @@ function showParts(res) {
 function placeArt(lines) {
   let clipped = 0;
   const clean = lines.map(l => String(l).replace(/\t/g, '    ').replace(/[\r\n]/g, ''));
-  pushUndo(); S.grid = blank(S.cols, S.rows); S.highlight = null;
+  pushUndo(); S.grid = blank(S.cols, S.rows); S.red.clear(); S.highlight = null;
   clean.forEach((l, y) => { if (y >= S.rows) { clipped++; return; } [...l].forEach((c, x) => { if (x < S.cols) S.grid[y][x] = c; else if (c !== ' ') clipped++; }); });
   draw(); updateGuide(); save();
   const notes = [];
@@ -907,18 +924,25 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', draw);
 new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
 // ---- Boot ----
-const saved = store.get('twa.v1');
+const saved = store.get('twa.v2');
 if (saved && saved.g) {
   Object.assign(S, { cols: saved.cols, rows: saved.rows, pitch: saved.pitch || 10, spacing: saved.spacing || 1, zoom: saved.zoom || 1, brush: saved.brush || '#', typeLine: saved.typeLine || 0 });
-  S.grid = fromText(saved.g.join('\n'), S.cols, S.rows);
+  S.grid = fromText(saved.g.join('\n'), S.cols, S.rows); S.red = new Set(saved.r || []); S.ink = saved.ink || 'black';
 } else {
-  S.grid = fromText(SAMPLE, S.cols, S.rows);
-  $('msg').className = 'note'; $('msg').textContent = 'Example drawing loaded. Clear the sheet to start your own.';
+  S.grid = fromText(SAMPLE, S.cols, S.rows); S.red = new Set(SAMPLE_RED);
+  $('msg').className = 'note'; $('msg').textContent = 'Star letterhead loaded. Red marks print with the red half of your ribbon.';
   setTimeout(() => { $('msg').textContent = ''; $('msg').className = 'msg'; }, 8000);
 }
+function loadStar(withUndo) {
+  if (withUndo) pushUndo();
+  S.cols = Math.max(S.cols, 65); S.rows = Math.max(S.rows, 6);
+  S.grid = fromText(SAMPLE, S.cols, S.rows); S.red = new Set(SAMPLE_RED);
+  $('cols').value = S.cols; $('rows').value = S.rows; resize(); updateGuide(); save();
+}
+$('loadStar').onclick = () => loadStar(true);
 $('cols').value = S.cols; $('rows').value = S.rows; $('pitch').value = S.pitch; $('spacing').value = S.spacing; $('zoom').value = S.zoom;
 $('imgW').value = Math.min(120, Math.max(20, S.cols)); $('imgWOut').textContent = $('imgW').value;
-buildKeyboard(); setTool('pencil'); updateGuide(); initAsk();
+buildKeyboard(); setInk(S.ink); setTool('pencil'); updateGuide(); initAsk();
 resize();
 (document.fonts?.load(`20px "Courier Prime"`) || Promise.resolve()).then(draw, draw);
 })();
