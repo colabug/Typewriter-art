@@ -149,6 +149,18 @@ textarea.io { width: 100%; min-height: 120px; resize: vertical; font-family: var
 .typing .hint { color: var(--muted); font-size: 13px; }
 .typing .blank { font-size: 1.3rem; color: var(--muted); font-family: var(--font-mono); }
 .kbd { font-family: var(--font-mono); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: var(--paper); font-size: 12px; }
+.card.ask { border-color: var(--accent); }
+textarea.desc { width: 100%; min-height: 64px; resize: vertical; padding: 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--paper); line-height: 1.4; }
+.thumb { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
+.thumb img { width: 48px; height: 48px; object-fit: cover; border-radius: 4px; border: 1px solid var(--line); }
+.parts { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.part { display: grid; grid-template-columns: 54px minmax(0, 1fr); gap: 2px 10px; padding: 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--paper); text-align: left; width: 100%; }
+.part[aria-pressed="true"] { border-color: var(--cloth); box-shadow: inset 3px 0 0 var(--cloth); }
+.part .ln { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; grid-row: span 2; padding-top: 2px; }
+.part b { font-size: 13px; }
+.part .chars { font-family: var(--font-mono); font-size: 12px; color: var(--accent); margin-left: 6px; }
+.part span.how { font-size: 12px; color: var(--muted); line-height: 1.4; }
+.thinking { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 
@@ -202,6 +214,34 @@ textarea.io { width: 100%; min-height: 120px; resize: vertical; font-family: var
   </main>
 
   <aside class="side">
+    <section class="card ask" id="askCard" hidden>
+      <h2>Describe it or show a picture</h2>
+      <p>Claude breaks your subject into simple shapes and draws it on the sheet using only your keys. Then click a part below to see which lines make it up.</p>
+      <textarea class="desc" id="desc" placeholder="e.g. a sailboat on small waves with a gull overhead"></textarea>
+      <div class="row">
+        <label class="btn" for="askImg" id="askImgLabel">Add a picture</label>
+        <input type="file" id="askImg" accept="image/*" hidden>
+        <span class="thumb" id="askThumb" hidden><img id="askThumbImg" alt="Your picture"><button class="btn" id="askImgClear" type="button">Remove</button></span>
+      </div>
+      <div class="field"><label for="askStyle">Style</label>
+        <select id="askStyle">
+          <option value="line">Line drawing (outlines)</option>
+          <option value="shaded">Shaded (light to dark tones)</option>
+          <option value="bold">Bold silhouette (solid fill)</option>
+        </select><span></span>
+      </div>
+      <p>Fits the current sheet: <b id="askSize">60 × 36</b>. Change Columns and Lines above to go bigger or smaller.</p>
+      <div class="row">
+        <button class="btn primary" id="askGo">Deconstruct and draw</button>
+        <button class="btn" id="askStop" hidden>Stop</button>
+        <span class="thinking" id="askStatus"></span>
+      </div>
+      <div id="askResult" hidden>
+        <p id="askTitle"></p>
+        <ul class="parts" id="askParts"></ul>
+        <p id="askTip"></p>
+      </div>
+    </section>
     <section class="card">
       <h2>Typing guide · current line</h2>
       <div class="guide-line" id="guide"></div>
@@ -276,7 +316,7 @@ const store = {
 
 // ---- State ----
 const S = { cols: 60, rows: 36, pitch: 10, spacing: 1, zoom: 1, grid: [], tool: 'pencil', brush: '#', shift: false,
-            hover: null, cursor: null, preview: null, typeLine: 0 };
+            hover: null, cursor: null, preview: null, typeLine: 0, highlight: null };
 const undoStack = [], redoStack = [];
 
 const blank = (c, r) => Array.from({ length: r }, () => Array(c).fill(' '));
@@ -314,7 +354,7 @@ const SAMPLE = [
 ].join('\n');
 
 function snapshot() { return S.grid.map(r => r.join('')); }
-function pushUndo() { undoStack.push({ cols: S.cols, rows: S.rows, g: snapshot() }); if (undoStack.length > 200) undoStack.shift(); redoStack.length = 0; }
+function pushUndo() { S.highlight = null; undoStack.push({ cols: S.cols, rows: S.rows, g: snapshot() }); if (undoStack.length > 200) undoStack.shift(); redoStack.length = 0; }
 function restore(st) {
   S.cols = st.cols; S.rows = st.rows; S.grid = st.g.map(l => [...l]);
   $('cols').value = S.cols; $('rows').value = S.rows; resize(); save();
@@ -340,7 +380,7 @@ function resize() {
   cv.width = Math.ceil(w * dpr); cv.height = Math.ceil(h * dpr);
   cv.style.width = w + 'px'; cv.style.height = h + 'px';
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  updateFit(); draw();
+  updateFit(); updateAskSize(); draw();
 }
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 function draw() {
@@ -365,6 +405,7 @@ function draw() {
   for (let y = 1; y < S.rows; y++) { ctx.fillStyle = y % 5 === 0 ? C.gs : C.g; ctx.fillRect(0, y * ch, W, 1); }
   // highlight current line / hover
   const focusRow = S.cursor ? S.cursor.y : S.hover ? S.hover.y : null;
+  if (S.highlight) { ctx.globalAlpha = 0.22; ctx.fillStyle = C.acc; ctx.fillRect(0, S.highlight[0] * ch, W, (S.highlight[1] - S.highlight[0] + 1) * ch); ctx.globalAlpha = 1; }
   if (focusRow != null) { ctx.globalAlpha = 0.18; ctx.fillStyle = C.cloth; ctx.fillRect(0, focusRow * ch, W, ch); ctx.globalAlpha = 1; }
   if (S.hover && !S.cursor) { ctx.strokeStyle = C.acc; ctx.lineWidth = 1.5; ctx.strokeRect(S.hover.x * cw + .75, S.hover.y * ch + .75, cw - 1.5, ch - 1.5); }
   if (S.cursor) { ctx.fillStyle = C.acc; ctx.fillRect(S.cursor.x * cw, (S.cursor.y + 1) * ch - 3, cw, 3); }
@@ -680,6 +721,121 @@ function convert() {
 }
 $('imgApply').onclick = convert;
 
+// ---- Describe / picture -> deconstructed art (asks Claude from the viewer's account) ----
+const STYLE_RULES = {
+  line: 'Draw outlines only, like a pen sketch. Use - _ for horizontal edges, / for rising diagonals, I ! : for verticals, ( ) for curves, \' . , for falling diagonals and small steps. Leave interiors mostly blank.',
+  shaded: 'Shade with tones using this ramp, lightest first: [. , : ; - = + * % $ # @] (brackets not included). Lighter areas use the early characters, dark areas the late ones. Keep a clear outline.',
+  bold: 'Fill the subject solid with # (or @ for darkest parts, = or : for mid tones) against a blank background, like a silhouette or stencil.',
+};
+let askImgFile = null, askCtl = null, askTimer = null;
+function askPrompt(desc, hasImg) {
+  const chars = [...ALLOWED].filter(c => c !== ' ').join(' ');
+  return `You are helping someone make typewriter art they will type by hand on a manual typewriter.
+
+SUBJECT: ${desc || '(no description given)'}${hasImg ? '\nA picture of the subject is attached. Base the drawing on it.' : ''}
+
+HARD RULES
+- The sheet is exactly ${S.cols} columns wide and at most ${S.rows} lines tall. Every line must be ${S.cols} characters or fewer.
+- Use ONLY these characters plus space: ${chars}
+- There is NO backslash, pipe, angle bracket, square or curly bracket, tilde, caret or backtick on this typewriter. Never use them. For a falling diagonal step with ' or . or use ( ) curves; for verticals use I ! or :.
+- Each character cell is about ${(6 / (S.pitch * S.spacing)).toFixed(2)} times as wide as it is tall, so a circle must be roughly ${(1 / (6 / (S.pitch * S.spacing))).toFixed(1)} times as many columns wide as it is lines tall.
+- Center the drawing on the sheet and use most of the space.
+- STYLE: ${STYLE_RULES[$('askStyle').value]}
+
+FIRST deconstruct the subject into 3 to 8 simple parts (basic shapes: circles, triangles, lines, masses), plan where each sits on the grid, THEN draw.
+
+Reply with only JSON in this shape:
+{"title": "short name of the piece",
+ "lines": ["line 1 text", "line 2 text", "..."],
+ "parts": [{"name": "Hull", "from": 12, "to": 15, "chars": "_ / ( )", "how": "one short sentence on the shape and how it is built"}],
+ "tip": "one practical tip for typing this piece on a typewriter"}
+"from" and "to" are 1-based line numbers into "lines". Keep leading spaces in each line exactly; they position the art.`;
+}
+function setAskBusy(b) {
+  $('askGo').disabled = b; $('askStop').hidden = !b;
+  clearInterval(askTimer);
+  if (b) { const t0 = Date.now(); const tick = () => $('askStatus').textContent = `Thinking… ${Math.round((Date.now() - t0) / 1000)}s`; tick(); askTimer = setInterval(tick, 1000); }
+}
+const ASK_ERR = {
+  not_granted: 'Claude is not allowed for this page. You can allow it from the page’s permissions.',
+  sampling_disabled: 'Claude is not available on this account.',
+  rate_limited: 'Too many requests right now. Wait a minute, then try again.',
+  session_expired: 'Your session expired. Sign in again, then try again.',
+  image_rejected: 'That picture could not be used. Try a JPEG or PNG under 20 MB.',
+  images_unavailable: 'Pictures cannot be sent from this view. Try a description instead.',
+  refused: 'Claude declined this one. Try describing it differently.',
+  invalid_json: 'The answer came back in the wrong shape. Try again.',
+  empty_completion: 'No drawing came back. Try a simpler description.',
+};
+function showParts(res) {
+  $('askResult').hidden = false;
+  $('askTitle').innerHTML = `<b>${esc(String(res.title || 'Your piece'))}</b>, broken into parts:`;
+  const ul = $('askParts'); ul.innerHTML = '';
+  (Array.isArray(res.parts) ? res.parts : []).slice(0, 12).forEach(p => {
+    const a = Math.max(1, parseInt(p.from) || 1), b = Math.max(a, parseInt(p.to) || a);
+    const li = document.createElement('li');
+    const btn = document.createElement('button'); btn.className = 'part'; btn.setAttribute('aria-pressed', 'false');
+    btn.innerHTML = `<span class="ln">Lines ${a}${b > a ? '–' + b : ''}</span><b>${esc(String(p.name || 'Part'))}<span class="chars">${esc(String(p.chars || ''))}</span></b><span class="how">${esc(String(p.how || ''))}</span>`;
+    btn.onclick = () => {
+      const on = btn.getAttribute('aria-pressed') !== 'true';
+      ul.querySelectorAll('.part').forEach(x => x.setAttribute('aria-pressed', 'false'));
+      btn.setAttribute('aria-pressed', on);
+      S.highlight = on ? [Math.min(a, S.rows) - 1, Math.min(b, S.rows) - 1] : null; draw();
+    };
+    li.appendChild(btn); ul.appendChild(li);
+  });
+  $('askTip').textContent = res.tip ? 'Tip: ' + res.tip : '';
+}
+function placeArt(lines) {
+  let swapped = 0, dropped = 0, clipped = 0;
+  const clean = lines.map(l => [...String(l)].map(c => {
+    if (ALLOWED.has(c)) return c;
+    if (SUBS[c]) { swapped++; return SUBS[c]; }
+    dropped++; return ' ';
+  }).join(''));
+  pushUndo(); S.grid = blank(S.cols, S.rows); S.highlight = null;
+  clean.forEach((l, y) => { if (y >= S.rows) { clipped++; return; } [...l].forEach((c, x) => { if (x < S.cols) S.grid[y][x] = c; else if (c !== ' ') clipped++; }); });
+  draw(); updateGuide(); save();
+  const notes = [];
+  if (swapped) notes.push(`${swapped} characters swapped for ones you have`);
+  if (dropped) notes.push(`${dropped} unknown characters blanked`);
+  if (clipped) notes.push('some art ran off the sheet');
+  return notes;
+}
+async function initAsk() {
+  const sample = window.claude?.use ? await window.claude.use('sample').catch(() => null) : null;
+  if (!sample) return;
+  $('askCard').hidden = false;
+  const caps = await sample.limits().catch(() => null);
+  if (!caps?.images) $('askImgLabel').hidden = true;
+  else $('askImg').accept = caps.images.mediaTypes.join(',');
+  $('askImg').onchange = e => {
+    const f = e.target.files[0]; if (!f) return;
+    askImgFile = f; $('askThumbImg').src = URL.createObjectURL(f); $('askThumb').hidden = false; $('askImgLabel').hidden = true;
+  };
+  $('askImgClear').onclick = () => { askImgFile = null; $('askImg').value = ''; $('askThumb').hidden = true; $('askImgLabel').hidden = !caps?.images; };
+  $('askStop').onclick = () => askCtl?.abort();
+  $('askGo').onclick = async () => {
+    const desc = $('desc').value.trim();
+    if (!desc && !askImgFile) { $('askStatus').textContent = 'Describe something or add a picture first.'; return; }
+    askCtl = new AbortController(); setAskBusy(true);
+    try {
+      const opts = { signal: askCtl.signal, cache: false };
+      if (askImgFile) opts.images = [askImgFile];
+      const res = await sample.json(askPrompt(desc, !!askImgFile), opts);
+      if (!res || !Array.isArray(res.lines)) throw { code: 'invalid_json' };
+      const notes = placeArt(res.lines);
+      showParts(res); setAskBusy(false);
+      $('askStatus').textContent = notes.length ? 'Drawn. ' + notes.join('; ') + '.' : 'Drawn on the sheet. Undo brings back what was there.';
+    } catch (e) {
+      setAskBusy(false);
+      if (e?.code === 'not_granted' || e?.code === 'sampling_disabled') $('askGo').disabled = true;
+      $('askStatus').textContent = e?.code === 'cancelled' ? 'Stopped.' : (ASK_ERR[e?.code] || 'Something went wrong reaching Claude. Try again.');
+    }
+  };
+}
+const updateAskSize = () => { $('askSize').textContent = `${S.cols} × ${S.rows}`; };
+
 // ---- Theme changes re-render the canvas ----
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', draw);
 new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
@@ -696,7 +852,7 @@ if (saved && saved.g) {
 }
 $('cols').value = S.cols; $('rows').value = S.rows; $('pitch').value = S.pitch; $('spacing').value = S.spacing; $('zoom').value = S.zoom;
 $('imgW').value = Math.min(120, Math.max(20, S.cols)); $('imgWOut').textContent = $('imgW').value;
-buildKeyboard(); setTool('pencil'); updateGuide();
+buildKeyboard(); setTool('pencil'); updateGuide(); initAsk();
 resize();
 (document.fonts?.load(`20px "Courier Prime"`) || Promise.resolve()).then(draw, draw);
 })();
