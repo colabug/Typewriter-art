@@ -84,6 +84,15 @@ header.top p { margin: 0; color: var(--muted); max-width: 60ch; }
 .status { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; min-height: 1.4em; }
 .status .msg { color: var(--warn); font-weight: 600; }
 .status .note { color: var(--ink); }
+.bad { color: var(--warn); font-weight: 700; }
+.fixbar { border: 1px solid var(--warn); border-radius: var(--r); background: var(--panel); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.fixbar h2 { margin: 0; font-size: 13px; font-weight: 700; color: var(--warn); }
+.fixbar p { margin: 0; font-size: 12px; color: var(--muted); }
+.fixrow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; }
+.fixrow .ch { font-family: var(--font-mono); font-size: 18px; font-weight: 700; color: var(--warn); min-width: 1.4em; text-align: center; }
+.fixrow .n { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 3.5em; }
+.fixrow .btn { font-family: var(--font-mono); padding: 3px 9px; }
+.fixrow .btn.word { font-family: var(--font-ui); }
 
 /* keyboard */
 .kb { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 10px; overflow-x: auto; }
@@ -203,6 +212,12 @@ textarea.desc { width: 100%; min-height: 64px; resize: vertical; padding: 8px; b
     </div>
     <div class="platen" id="platen"><canvas id="sheet" aria-label="Drawing sheet"></canvas></div>
     <div class="status"><span id="pos">Col –, line –</span><span id="toolhint"></span><span id="msg" class="msg"></span></div>
+    <section class="fixbar" id="fixbar" hidden aria-live="polite">
+      <h2 id="fixTitle"></h2>
+      <p>These are shown in red on the sheet. Replace them all at once below, or click <b>Find next</b> and type a replacement over each one. Drawing over them with the pencil works too.</p>
+      <div id="fixRows" style="display:flex;flex-direction:column;gap:6px"></div>
+      <div class="row"><button class="btn" id="fixNext">Find next</button></div>
+    </section>
 
     <section class="kb" aria-label="Your typewriter keyboard">
       <div class="kb-head">
@@ -269,7 +284,7 @@ textarea.desc { width: 100%; min-height: 64px; resize: vertical; padding: 8px; b
 
     <section class="card">
       <h2>Copy &amp; paste text</h2>
-      <p>Copy your art as plain text, or paste existing ASCII art. Characters your typewriter lacks get swapped: | becomes I, \ becomes /, &lt; [ { become (.</p>
+      <p>Copy your art as plain text, or paste existing ASCII art. Characters your typewriter can't type show up in red so you can fix them.</p>
       <textarea class="io" id="io" spellcheck="false" aria-label="Art as text"></textarea>
       <div class="row">
         <button class="btn" id="exportBtn">Copy sheet as text</button>
@@ -306,7 +321,6 @@ const UNSHIFTED = new Set([' ']); const SHIFTED = new Set();
 KB.flat().forEach(([s, u]) => { UNSHIFTED.add(u); SHIFTED.add(s); });
 const ALLOWED = new Set([...UNSHIFTED, ...SHIFTED]);
 const needsShift = c => !UNSHIFTED.has(c);
-const SUBS = { '|':'I', '\\':'/', '<':'(', '>':')', '[':'(', ']':')', '{':'(', '}':')', '~':'-', '^':"'", '`':"'", '\t':' ' };
 
 const $ = id => document.getElementById(id);
 const store = {
@@ -385,7 +399,7 @@ function resize() {
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 function draw() {
   const W = S.cols * cw, H = S.rows * ch;
-  const C = { paper: css('--paper'), g: css('--paper-grid'), gs: css('--paper-grid-strong'), ink: css('--ink'), muted: css('--muted'), acc: css('--accent'), cloth: css('--cloth'), panel: css('--panel') };
+  const C = { paper: css('--paper'), g: css('--paper-grid'), gs: css('--paper-grid-strong'), ink: css('--ink'), muted: css('--muted'), acc: css('--accent'), cloth: css('--cloth'), panel: css('--panel'), warn: css('--warn') };
   ctx.clearRect(0, 0, cv.width, cv.height);
   ctx.fillStyle = C.panel; ctx.fillRect(0, 0, GUTTER + W + 8, RULER + H + 8);
   // ruler (like the typewriter's paper scale)
@@ -417,10 +431,13 @@ function draw() {
     let c = S.grid[y][x], isPv = false;
     if (pv && pv.has(y * S.cols + x)) { c = pv.get(y * S.cols + x); isPv = true; }
     if (c === ' ') continue;
-    ctx.fillStyle = isPv ? C.acc : C.ink;
+    const bad = !ALLOWED.has(c);
+    if (bad) { ctx.globalAlpha = 0.16; ctx.fillStyle = C.warn; ctx.fillRect(x * cw, y * ch, cw, ch); ctx.globalAlpha = 1; }
+    ctx.fillStyle = isPv ? C.acc : bad ? C.warn : C.ink;
     ctx.fillText(c, x * cw + cw / 2, y * ch + ch / 2 + fs * 0.04);
   }
   ctx.restore();
+  updateFixbar();
 }
 
 function updateFit() {
@@ -599,7 +616,7 @@ function runs(line) {
   }
   return out;
 }
-const mark = s => [...s].map(c => needsShift(c) ? `<u>${esc(c)}</u>` : esc(c)).join('');
+const mark = s => [...s].map(c => !ALLOWED.has(c) ? `<span class="bad" title="Not on your typewriter">${esc(c)}</span>` : needsShift(c) ? `<u>${esc(c)}</u>` : esc(c)).join('');
 function runsHTML(line) {
   const r = runs(line);
   if (!r.length) return '<span class="run sp">Blank line: just return</span>';
@@ -675,18 +692,66 @@ $('exportBtn').onclick = () => {
 };
 $('importBtn').onclick = () => {
   const raw = $('io').value; if (!raw.trim()) { flash('Paste some text into the box first.'); return; }
-  let swapped = 0, dropped = 0;
-  const clean = [...raw].map(c => {
-    if (c === '\n' || c === '\r' || ALLOWED.has(c)) return c;
-    if (SUBS[c]) { swapped++; return SUBS[c]; }
-    dropped++; return ' ';
-  }).join('');
+  const clean = raw.replace(/\t/g, '    ');
   const lines = clean.split(/\r?\n/);
   const w = Math.min(160, Math.max(S.cols, ...lines.map(l => l.length))), h = Math.min(200, Math.max(S.rows, lines.length));
   pushUndo(); S.cols = w; S.rows = h; S.grid = fromText(clean, w, h);
   $('cols').value = w; $('rows').value = h; resize(); updateGuide(); save();
-  const parts = []; if (swapped) parts.push(`${swapped} swapped`); if (dropped) parts.push(`${dropped} unknown characters blanked`);
-  $('msg').textContent = parts.length ? `Loaded. ${parts.join(', ')}.` : ''; if (!parts.length) flash('');
+  const bad = countBad();
+  if (bad) flash(`Loaded. ${bad} character${bad > 1 ? 's' : ''} your typewriter can't type are in red.`);
+};
+
+// ---- Characters the typewriter can't type ----
+const SUGG = { '|': ['I', '!', ':'], '\\': ["'", '.', '('], '<': ['('], '>': [')'], '[': ['('], ']': [')'], '{': ['('], '}': [')'],
+  '~': ['-', '='], '^': ["'"], '`': ["'"], '“': ['"'], '”': ['"'], '‘': ["'"], '’': ["'"], '—': ['-'], '–': ['-'] };
+function badCounts() {
+  const m = new Map();
+  for (const row of S.grid) for (const c of row) if (!ALLOWED.has(c)) m.set(c, (m.get(c) || 0) + 1);
+  return m;
+}
+const countBad = () => [...badCounts().values()].reduce((a, b) => a + b, 0);
+let fixSig = '';
+function updateFixbar() {
+  const m = badCounts();
+  const sig = [...m].map(([c, n]) => c + n).join('|') + '#' + S.brush;
+  if (sig === fixSig) return; fixSig = sig;
+  $('fixbar').hidden = !m.size; if (!m.size) return;
+  const total = [...m.values()].reduce((a, b) => a + b, 0);
+  $('fixTitle').textContent = `${total} character${total > 1 ? 's' : ''} your typewriter can't type`;
+  const rows = $('fixRows'); rows.innerHTML = '';
+  [...m].sort((a, b) => b[1] - a[1]).forEach(([c, n]) => {
+    const r = document.createElement('div'); r.className = 'fixrow';
+    r.innerHTML = `<span class="ch">${esc(c)}</span><span class="n">× ${n}</span><span>Replace all with</span>`;
+    const opts = [...new Set([...(SUGG[c] || []), S.brush])].filter(o => ALLOWED.has(o));
+    opts.forEach(o => {
+      const b = document.createElement('button'); b.className = 'btn'; b.textContent = o === ' ' ? '␣' : o;
+      b.title = o === S.brush ? `Your current brush (${o})` : `Replace every ${c} with ${o}`;
+      b.onclick = () => replaceAll(c, o); r.appendChild(b);
+    });
+    const blankBtn = document.createElement('button'); blankBtn.className = 'btn word'; blankBtn.textContent = 'blank';
+    blankBtn.onclick = () => replaceAll(c, ' '); r.appendChild(blankBtn);
+    rows.appendChild(r);
+  });
+}
+function replaceAll(from, to) {
+  pushUndo();
+  for (const row of S.grid) for (let x = 0; x < row.length; x++) if (row[x] === from) row[x] = to;
+  draw(); updateGuide(); save();
+}
+$('fixNext').onclick = () => {
+  const start = S.cursor ? S.cursor.y * S.cols + S.cursor.x + 1 : 0, total = S.cols * S.rows;
+  for (let i = 0; i < total; i++) {
+    const k = (start + i) % total, x = k % S.cols, y = Math.floor(k / S.cols);
+    if (!ALLOWED.has(S.grid[y][x])) {
+      setTool('text'); S.cursor = { x, y, home: x };
+      const pl = $('platen');
+      pl.scrollLeft = Math.max(0, GUTTER + x * cw - pl.clientWidth / 2);
+      pl.scrollTop = Math.max(0, RULER + y * ch - pl.clientHeight / 2);
+      draw(); updateGuide();
+      flash(`Line ${y + 1}, column ${x + 1}: type the character to use instead.`);
+      return;
+    }
+  }
 };
 
 // ---- Image conversion ----
@@ -787,18 +852,14 @@ function showParts(res) {
   $('askTip').textContent = res.tip ? 'Tip: ' + res.tip : '';
 }
 function placeArt(lines) {
-  let swapped = 0, dropped = 0, clipped = 0;
-  const clean = lines.map(l => [...String(l)].map(c => {
-    if (ALLOWED.has(c)) return c;
-    if (SUBS[c]) { swapped++; return SUBS[c]; }
-    dropped++; return ' ';
-  }).join(''));
+  let clipped = 0;
+  const clean = lines.map(l => String(l).replace(/\t/g, '    ').replace(/[\r\n]/g, ''));
   pushUndo(); S.grid = blank(S.cols, S.rows); S.highlight = null;
   clean.forEach((l, y) => { if (y >= S.rows) { clipped++; return; } [...l].forEach((c, x) => { if (x < S.cols) S.grid[y][x] = c; else if (c !== ' ') clipped++; }); });
   draw(); updateGuide(); save();
   const notes = [];
-  if (swapped) notes.push(`${swapped} characters swapped for ones you have`);
-  if (dropped) notes.push(`${dropped} unknown characters blanked`);
+  const bad = countBad();
+  if (bad) notes.push(`${bad} character${bad > 1 ? 's' : ''} you can't type are in red`);
   if (clipped) notes.push('some art ran off the sheet');
   return notes;
 }
