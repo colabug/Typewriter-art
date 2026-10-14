@@ -1,0 +1,699 @@
+<title>Typewriter Art Studio</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Archivo:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: a workbench — tool rail, the sheet of paper in the middle, keyboard + panels around it. Colors come from the machine: chrome body, cream keycaps, sage shift keys, mustard cloth. */
+:root {
+  --bg: #e4e7e6;          /* chrome body */
+  --panel: #f3f5f4;
+  --line: #c9cfcd;
+  --ink: #1c2220;
+  --muted: #5e6966;
+  --paper: #ffffff;
+  --paper-grid: #eef1f0;
+  --paper-grid-strong: #dbe1df;
+  --key: #f1efe6;          /* keycap cream */
+  --key-edge: #cfcbbd;
+  --accent: #5d8e83;       /* sage shift key */
+  --accent-ink: #ffffff;
+  --cloth: #e3b737;        /* mustard cloth */
+  --warn: #b5482f;
+  --font-mono: "Courier Prime", "Courier New", Courier, monospace;
+  --font-ui: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --r: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #151918; --panel: #1e2423; --line: #333c3a; --ink: #e5ebe9; --muted: #95a29e;
+    --paper: #232927; --paper-grid: #2a3130; --paper-grid-strong: #36403e;
+    --key: #2e3432; --key-edge: #1a1f1e; --accent: #79ad9f; --accent-ink: #0f1514;
+    --cloth: #d9b04a; --warn: #e07a5f; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #151918; --panel: #1e2423; --line: #333c3a; --ink: #e5ebe9; --muted: #95a29e;
+  --paper: #232927; --paper-grid: #2a3130; --paper-grid-strong: #36403e;
+  --key: #2e3432; --key-edge: #1a1f1e; --accent: #79ad9f; --accent-ink: #0f1514;
+  --cloth: #d9b04a; --warn: #e07a5f; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 14px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 12px 24px;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+header.top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 20px; margin-bottom: 12px; }
+header.top h1 { font-family: var(--font-mono); font-weight: 700; font-size: 1.6rem; margin: 0; letter-spacing: 0.02em; }
+header.top h1 span { background: var(--cloth); color: #1c2220; padding: 0 6px; }
+header.top p { margin: 0; color: var(--muted); max-width: 60ch; }
+.spacer { flex: 1; }
+
+.bench { display: grid; grid-template-columns: 64px minmax(0, 1fr) 320px; gap: 14px; align-items: start; }
+@media (max-width: 1020px) { .bench { grid-template-columns: 56px minmax(0, 1fr); } .side { grid-column: 1 / -1; } }
+@media (max-width: 560px) { .bench { grid-template-columns: minmax(0, 1fr); } .rail { flex-direction: row; flex-wrap: wrap; position: static !important; } }
+
+.rail { display: flex; flex-direction: column; gap: 6px; position: sticky; top: env(safe-area-inset-top, 0px); }
+.tool {
+  display: grid; place-items: center; gap: 2px; padding: 8px 4px; min-width: 52px;
+  background: var(--key); border: 1px solid var(--key-edge); border-bottom-width: 3px; border-radius: 10px 10px 14px 14px;
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted);
+}
+.tool b { font-family: var(--font-mono); font-size: 18px; color: var(--ink); line-height: 1; text-transform: none; }
+.tool[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.tool[aria-pressed="true"] b { color: var(--accent-ink); }
+
+.center { min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.sheetbar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; font-size: 13px; color: var(--muted); }
+.sheetbar label { display: inline-flex; gap: 6px; align-items: center; }
+.sheetbar input[type=number] { width: 4.2em; padding: 3px 4px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); }
+.sheetbar select { padding: 3px 4px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); }
+.fit { font-variant-numeric: tabular-nums; }
+.fit .bad { color: var(--warn); font-weight: 600; }
+
+.platen { overflow: auto; max-height: 62vh; border-radius: var(--r); background: var(--panel); border: 1px solid var(--line); padding: 10px; }
+#sheet { display: block; touch-action: none; cursor: crosshair; box-shadow: 0 1px 0 var(--line), 0 6px 18px rgba(0,0,0,0.08); }
+.status { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; min-height: 1.4em; }
+.status .msg { color: var(--warn); font-weight: 600; }
+.status .note { color: var(--ink); }
+
+/* keyboard */
+.kb { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 10px; overflow-x: auto; }
+.kb-head { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 8px; font-size: 13px; color: var(--muted); }
+.brush { display: inline-flex; align-items: center; gap: 8px; }
+.brush output { display: inline-grid; place-items: center; width: 34px; height: 40px; font-family: var(--font-mono); font-size: 26px; font-weight: 700; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 4px; }
+.kb-rows { display: flex; flex-direction: column; gap: 5px; min-width: 620px; }
+.kb-row { display: flex; gap: 5px; }
+.kb-row:nth-child(2) { padding-left: 22px; } .kb-row:nth-child(3) { padding-left: 0; } .kb-row:nth-child(4) { padding-left: 22px; }
+.key {
+  width: 42px; height: 42px; flex: none; border-radius: 10px 10px 16px 16px; border: 1px solid var(--key-edge); border-bottom-width: 4px;
+  background: var(--key); font-family: var(--font-ui); font-weight: 600; color: var(--ink);
+  display: grid; grid-template-rows: 1fr 1fr; place-items: center; padding: 2px 0; line-height: 1;
+}
+.key .t, .key .b { font-size: 13px; }
+.key.single { grid-template-rows: 1fr; font-size: 17px; }
+.key .dim { opacity: 0.35; }
+.key.sel { outline: 3px solid var(--cloth); outline-offset: 0; }
+.key.wide { width: 56px; }
+.key.shift { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; grid-template-rows: 1fr; }
+.key.shift[aria-pressed="true"] { box-shadow: inset 0 3px 0 rgba(0,0,0,0.25); border-bottom-width: 1px; transform: translateY(3px); }
+.key.space { width: 300px; grid-template-rows: 1fr; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; }
+
+/* side panels */
+.side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.card h2 { margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); font-weight: 700; }
+.card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.btn { padding: 6px 10px; border-radius: 5px; border: 1px solid var(--line); background: var(--paper); font-size: 13px; font-weight: 500; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn:disabled { opacity: 0.45; cursor: default; }
+.field { display: grid; grid-template-columns: 82px minmax(0, 1fr) 36px; gap: 8px; align-items: center; font-size: 13px; }
+.field output { font-variant-numeric: tabular-nums; text-align: right; color: var(--muted); }
+.field select, .field input[type=text] { width: 100%; padding: 4px; border: 1px solid var(--line); border-radius: 4px; background: var(--paper); font-family: var(--font-mono); }
+.check { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; }
+
+.guide-line { font-family: var(--font-mono); font-size: 13px; display: flex; flex-wrap: wrap; gap: 4px; line-height: 1.6; }
+.run { padding: 1px 6px; border-radius: 4px; background: var(--paper); border: 1px solid var(--line); white-space: pre; }
+.run.sp { background: transparent; border-style: dashed; color: var(--muted); font-family: var(--font-ui); font-size: 12px; }
+.run.rep { border-color: var(--accent); }
+.run u { text-decoration: none; box-shadow: inset 0 -3px 0 var(--cloth); }
+.legend { font-size: 12px; color: var(--muted); }
+.legend u { text-decoration: none; box-shadow: inset 0 -3px 0 var(--cloth); font-family: var(--font-mono); color: var(--ink); }
+
+textarea.io { width: 100%; min-height: 120px; resize: vertical; font-family: var(--font-mono); font-size: 12px; line-height: 1.25; padding: 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--paper); white-space: pre; overflow: auto; }
+
+/* typing mode */
+.typing { position: fixed; inset: 0; z-index: 20; background: var(--bg); display: flex; flex-direction: column; gap: 16px;
+  padding: calc(16px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); overflow: auto; }
+.typing .tbar { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+.typing .lineno { font-family: var(--font-mono); font-size: 2rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.typing .lineno small { font-size: 1rem; color: var(--muted); font-weight: 400; }
+.progress { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.progress i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .2s; }
+.typing .bigline { background: var(--paper); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; overflow-x: auto; }
+.typing .bigline pre { margin: 0; font-family: var(--font-mono); font-size: clamp(14px, 2.2vw, 26px); line-height: 1.3; }
+.typing .bigline pre .ctx { color: var(--muted); opacity: 0.5; }
+.typing .guide-line { font-size: clamp(16px, 2vw, 22px); gap: 8px; }
+.typing .guide-line .run.sp { font-size: 0.8em; }
+.typing .hint { color: var(--muted); font-size: 13px; }
+.typing .blank { font-size: 1.3rem; color: var(--muted); font-family: var(--font-mono); }
+.kbd { font-family: var(--font-mono); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: var(--paper); font-size: 12px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<header class="top">
+  <h1>Typewriter <span>Art</span> Studio</h1>
+  <p>Draw with only the keys on your machine. Every mark here can be typed: no pipes, no backslashes, no brackets.</p>
+  <div class="spacer"></div>
+  <div class="row">
+    <button class="btn" id="undo" title="Undo (Ctrl+Z)">Undo</button>
+    <button class="btn" id="redo" title="Redo (Ctrl+Shift+Z)">Redo</button>
+    <button class="btn" id="clear">Clear sheet</button>
+    <button class="btn primary" id="typeMode">Start typing guide</button>
+  </div>
+</header>
+
+<div class="bench">
+  <nav class="rail" aria-label="Tools">
+    <button class="tool" data-tool="pencil" aria-pressed="true" title="Pencil (P)"><b>#</b>Pencil</button>
+    <button class="tool" data-tool="line" aria-pressed="false" title="Line (L)"><b>/</b>Line</button>
+    <button class="tool" data-tool="rect" aria-pressed="false" title="Rectangle (R)"><b>=</b>Rect</button>
+    <button class="tool" data-tool="box" aria-pressed="false" title="Box with + - I edges (B)"><b>+</b>Box</button>
+    <button class="tool" data-tool="fill" aria-pressed="false" title="Fill (F)"><b>%</b>Fill</button>
+    <button class="tool" data-tool="text" aria-pressed="false" title="Type text (T)"><b>Aa</b>Type</button>
+    <button class="tool" data-tool="erase" aria-pressed="false" title="Erase (E)"><b>&nbsp;</b>Erase</button>
+    <button class="tool" data-tool="pick" aria-pressed="false" title="Pick a character from the sheet (I)"><b>@</b>Pick</button>
+  </nav>
+
+  <main class="center">
+    <div class="sheetbar">
+      <label>Columns <input type="number" id="cols" min="5" max="160" value="60"></label>
+      <label>Lines <input type="number" id="rows" min="3" max="200" value="36"></label>
+      <label>Pitch
+        <select id="pitch"><option value="10">Pica · 10 cpi</option><option value="12">Elite · 12 cpi</option></select>
+      </label>
+      <label>Line space
+        <select id="spacing"><option value="1">1</option><option value="1.5">1½</option><option value="2">2</option></select>
+      </label>
+      <label>Zoom <input type="range" id="zoom" min="0.6" max="2" step="0.1" value="1"></label>
+      <span class="fit" id="fit"></span>
+    </div>
+    <div class="platen" id="platen"><canvas id="sheet" aria-label="Drawing sheet"></canvas></div>
+    <div class="status"><span id="pos">Col –, line –</span><span id="toolhint"></span><span id="msg" class="msg"></span></div>
+
+    <section class="kb" aria-label="Your typewriter keyboard">
+      <div class="kb-head">
+        <span class="brush">Brush <output id="brushOut">#</output></span>
+        <span>Click a key to choose the character you draw with. Hold the green <b>Shift</b> for the top character. Typing a key on your computer works too.</span>
+      </div>
+      <div class="kb-rows" id="kbRows"></div>
+    </section>
+  </main>
+
+  <aside class="side">
+    <section class="card">
+      <h2>Typing guide · current line</h2>
+      <div class="guide-line" id="guide"></div>
+      <div class="legend">Highlighted characters like <u>#</u> need Shift. Trailing spaces are dropped; just hit return.</div>
+    </section>
+
+    <section class="card">
+      <h2>Image to type</h2>
+      <p>Turn a photo or drawing into characters from your keyboard. It replaces the sheet; Undo brings it back.</p>
+      <input type="file" id="imgFile" accept="image/*">
+      <div class="field"><label for="imgW">Width</label><input type="range" id="imgW" min="20" max="120" value="60"><output id="imgWOut">60</output></div>
+      <div class="field"><label for="imgB">Brightness</label><input type="range" id="imgB" min="-100" max="100" value="0"><output id="imgBOut">0</output></div>
+      <div class="field"><label for="imgC">Contrast</label><input type="range" id="imgC" min="-50" max="150" value="20"><output id="imgCOut">20</output></div>
+      <div class="field"><label for="ramp">Shading</label>
+        <select id="ramp">
+          <option value=" .,:;-=+*%$#@">Balanced</option>
+          <option value=" .',:;-!/=+?%*&$#@">Fine (18 tones)</option>
+          <option value=" .:=#@">Bold (6 tones)</option>
+          <option value=" .icoaUOHMW">Letters</option>
+        </select><span></span>
+      </div>
+      <label class="check"><input type="checkbox" id="imgInv"> Invert (dark paper look)</label>
+      <div class="row"><button class="btn primary" id="imgApply" disabled>Convert to sheet</button></div>
+    </section>
+
+    <section class="card">
+      <h2>Copy &amp; paste text</h2>
+      <p>Copy your art as plain text, or paste existing ASCII art. Characters your typewriter lacks get swapped: | becomes I, \ becomes /, &lt; [ { become (.</p>
+      <textarea class="io" id="io" spellcheck="false" aria-label="Art as text"></textarea>
+      <div class="row">
+        <button class="btn" id="exportBtn">Copy sheet as text</button>
+        <button class="btn" id="importBtn">Load text onto sheet</button>
+      </div>
+    </section>
+  </aside>
+</div>
+
+<section class="typing" id="typing" hidden aria-label="Typing guide">
+  <div class="tbar">
+    <div class="lineno" id="tLineNo">Line 1 <small>of 1</small></div>
+    <div class="spacer"></div>
+    <button class="btn" id="tPrev">← Previous line</button>
+    <button class="btn primary" id="tNext">Next line →</button>
+    <button class="btn" id="tClose">Back to drawing</button>
+  </div>
+  <div class="progress"><i id="tProg"></i></div>
+  <div class="bigline"><pre id="tPre"></pre></div>
+  <div class="guide-line" id="tGuide"></div>
+  <div class="hint">Type the line, hit return, then press <span class="kbd">Space</span> or <span class="kbd">→</span> here. <span class="kbd">←</span> goes back. Start each line at your left margin. Highlighted characters need Shift.</div>
+</section>
+
+<script>
+(() => {
+// ---- Your keyboard. Each key: [shifted, unshifted]. ----
+const KB = [
+  [['+','1'],['"','2'],['#','3'],['$','4'],['£','5'],['_','6'],['&','7'],["'",'8'],['(','9'],[')','0'],['=','-'],['*','@']],
+  'QWERTYUIOP'.split('').map(c => [c, c.toLowerCase()]).concat([['¼','½']]),
+  'ASDFGHJKL'.split('').map(c => [c, c.toLowerCase()]).concat([[':',';'],['?','%']]),
+  'ZXCVBNM'.split('').map(c => [c, c.toLowerCase()]).concat([[';',','],[':','.'],['!','/']]),
+];
+const UNSHIFTED = new Set([' ']); const SHIFTED = new Set();
+KB.flat().forEach(([s, u]) => { UNSHIFTED.add(u); SHIFTED.add(s); });
+const ALLOWED = new Set([...UNSHIFTED, ...SHIFTED]);
+const needsShift = c => !UNSHIFTED.has(c);
+const SUBS = { '|':'I', '\\':'/', '<':'(', '>':')', '[':'(', ']':')', '{':'(', '}':')', '~':'-', '^':"'", '`':"'", '\t':' ' };
+
+const $ = id => document.getElementById(id);
+const store = {
+  get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+
+// ---- State ----
+const S = { cols: 60, rows: 36, pitch: 10, spacing: 1, zoom: 1, grid: [], tool: 'pencil', brush: '#', shift: false,
+            hover: null, cursor: null, preview: null, typeLine: 0 };
+const undoStack = [], redoStack = [];
+
+const blank = (c, r) => Array.from({ length: r }, () => Array(c).fill(' '));
+const toText = g => {
+  const lines = g.map(r => r.join('').replace(/\s+$/, ''));
+  while (lines.length && !lines[lines.length - 1]) lines.pop();
+  return lines.join('\n');
+};
+function fromText(txt, c, r) {
+  const g = blank(c, r);
+  txt.split(/\r?\n/).slice(0, r).forEach((line, y) => [...line].slice(0, c).forEach((ch, x) => g[y][x] = ch));
+  return g;
+}
+
+const SAMPLE = [
+'',
+'                         .',
+'                         :',
+'                 .       :       .',
+"                  '.     :     .'",
+"                    '. ##### .'",
+'                     ##     ##',
+'           . . . .  #   @ @   #  . . . .',
+'                    #  (   )  #',
+"                     ## '-' ##",
+"                    .' ##### '.",
+"                  .'     :     '.",
+"                 '       :       '",
+'                         :',
+"                         '",
+'',
+'           +----------------------------+',
+'           I  T Y P E D   B Y   H A N D  I',
+'           +----------------------------+',
+].join('\n');
+
+function snapshot() { return S.grid.map(r => r.join('')); }
+function pushUndo() { undoStack.push({ cols: S.cols, rows: S.rows, g: snapshot() }); if (undoStack.length > 200) undoStack.shift(); redoStack.length = 0; }
+function restore(st) {
+  S.cols = st.cols; S.rows = st.rows; S.grid = st.g.map(l => [...l]);
+  $('cols').value = S.cols; $('rows').value = S.rows; resize(); save();
+}
+function undo() { if (!undoStack.length) return; redoStack.push({ cols: S.cols, rows: S.rows, g: snapshot() }); restore(undoStack.pop()); }
+function redo() { if (!redoStack.length) return; undoStack.push({ cols: S.cols, rows: S.rows, g: snapshot() }); restore(redoStack.pop()); }
+
+let saveT;
+function save() {
+  clearTimeout(saveT);
+  saveT = setTimeout(() => store.set('twa.v1', { cols: S.cols, rows: S.rows, pitch: S.pitch, spacing: S.spacing, zoom: S.zoom, brush: S.brush, g: snapshot(), typeLine: S.typeLine }), 250);
+}
+
+// ---- Canvas geometry ----
+const cv = $('sheet'), ctx = cv.getContext('2d');
+const RULER = 20, GUTTER = 30;
+let cw = 11, ch = 18;
+function resize() {
+  cw = Math.round(11 * S.zoom);
+  ch = cw / (6 / (S.pitch * S.spacing));   // cell width/height = (1/cpi) / (spacing/6)
+  const w = GUTTER + S.cols * cw + 8, h = RULER + S.rows * ch + 8;
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = Math.ceil(w * dpr); cv.height = Math.ceil(h * dpr);
+  cv.style.width = w + 'px'; cv.style.height = h + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  updateFit(); draw();
+}
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function draw() {
+  const W = S.cols * cw, H = S.rows * ch;
+  const C = { paper: css('--paper'), g: css('--paper-grid'), gs: css('--paper-grid-strong'), ink: css('--ink'), muted: css('--muted'), acc: css('--accent'), cloth: css('--cloth'), panel: css('--panel') };
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  ctx.fillStyle = C.panel; ctx.fillRect(0, 0, GUTTER + W + 8, RULER + H + 8);
+  // ruler (like the typewriter's paper scale)
+  ctx.fillStyle = C.muted; ctx.font = `10px ${css('--font-ui')}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (let x = 0; x <= S.cols; x++) {
+    const px = GUTTER + x * cw;
+    const big = x % 10 === 0, mid = x % 5 === 0;
+    ctx.fillRect(px, RULER - (big ? 8 : mid ? 5 : 3), 1, big ? 8 : mid ? 5 : 3);
+    if (big && x) ctx.fillText(String(x), px, 6);
+  }
+  ctx.textAlign = 'right';
+  for (let y = 0; y < S.rows; y++) if ((y + 1) % 5 === 0 || y === 0) ctx.fillText(String(y + 1), GUTTER - 5, RULER + y * ch + ch / 2);
+  // paper
+  ctx.save(); ctx.translate(GUTTER, RULER);
+  ctx.fillStyle = C.paper; ctx.fillRect(0, 0, W, H);
+  for (let x = 1; x < S.cols; x++) { ctx.fillStyle = x % 10 === 0 ? C.gs : C.g; ctx.fillRect(x * cw, 0, 1, H); }
+  for (let y = 1; y < S.rows; y++) { ctx.fillStyle = y % 5 === 0 ? C.gs : C.g; ctx.fillRect(0, y * ch, W, 1); }
+  // highlight current line / hover
+  const focusRow = S.cursor ? S.cursor.y : S.hover ? S.hover.y : null;
+  if (focusRow != null) { ctx.globalAlpha = 0.18; ctx.fillStyle = C.cloth; ctx.fillRect(0, focusRow * ch, W, ch); ctx.globalAlpha = 1; }
+  if (S.hover && !S.cursor) { ctx.strokeStyle = C.acc; ctx.lineWidth = 1.5; ctx.strokeRect(S.hover.x * cw + .75, S.hover.y * ch + .75, cw - 1.5, ch - 1.5); }
+  if (S.cursor) { ctx.fillStyle = C.acc; ctx.fillRect(S.cursor.x * cw, (S.cursor.y + 1) * ch - 3, cw, 3); }
+  // glyphs
+  const fs = cw / 0.6;
+  ctx.font = `${fs}px ${css('--font-mono')}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const pv = S.preview;
+  for (let y = 0; y < S.rows; y++) for (let x = 0; x < S.cols; x++) {
+    let c = S.grid[y][x], isPv = false;
+    if (pv && pv.has(y * S.cols + x)) { c = pv.get(y * S.cols + x); isPv = true; }
+    if (c === ' ') continue;
+    ctx.fillStyle = isPv ? C.acc : C.ink;
+    ctx.fillText(c, x * cw + cw / 2, y * ch + ch / 2 + fs * 0.04);
+  }
+  ctx.restore();
+}
+
+function updateFit() {
+  const w = S.cols / S.pitch, h = S.rows * S.spacing / 6;
+  const letter = w <= 6.5 && h <= 9, a4 = w <= 6.27 && h <= 9.69;
+  const fits = letter && a4 ? 'fits Letter & A4 with 1″ margins' : letter ? 'fits Letter, too wide/tall for A4' : a4 ? 'fits A4, not Letter' : 'larger than a page with 1″ margins';
+  $('fit').innerHTML = `${w.toFixed(1)}″ × ${h.toFixed(1)}″ · <span class="${letter || a4 ? '' : 'bad'}">${fits}</span>`;
+}
+
+// ---- Drawing helpers ----
+function lineCells(a, b) {
+  const out = []; let x0 = a.x, y0 = a.y; const dx = Math.abs(b.x - x0), dy = -Math.abs(b.y - y0);
+  const sx = x0 < b.x ? 1 : -1, sy = y0 < b.y ? 1 : -1; let err = dx + dy;
+  for (;;) { out.push([x0, y0]); if (x0 === b.x && y0 === b.y) break; const e2 = 2 * err; if (e2 >= dy) { err += dy; x0 += sx; } if (e2 <= dx) { err += dx; y0 += sy; } }
+  return out;
+}
+function rectCells(a, b, mode) {
+  const m = new Map(); const x1 = Math.min(a.x, b.x), x2 = Math.max(a.x, b.x), y1 = Math.min(a.y, b.y), y2 = Math.max(a.y, b.y);
+  for (let x = x1; x <= x2; x++) for (let y = y1; y <= y2; y++) {
+    const edgeX = x === x1 || x === x2, edgeY = y === y1 || y === y2;
+    if (!edgeX && !edgeY) continue;
+    let c = S.brush;
+    if (mode === 'box') c = edgeX && edgeY ? '+' : edgeY ? '-' : 'I';
+    m.set(y * S.cols + x, c);
+  }
+  return m;
+}
+function flood(x, y, to) {
+  const from = S.grid[y][x]; if (from === to) return;
+  const st = [[x, y]];
+  while (st.length) {
+    const [cx, cy] = st.pop();
+    if (cx < 0 || cy < 0 || cx >= S.cols || cy >= S.rows || S.grid[cy][cx] !== from) continue;
+    S.grid[cy][cx] = to; st.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
+  }
+}
+const setCell = (x, y, c) => { if (x >= 0 && y >= 0 && x < S.cols && y < S.rows) S.grid[y][x] = c; };
+
+// ---- Pointer ----
+function cellAt(e) {
+  const r = cv.getBoundingClientRect();
+  const x = Math.floor((e.clientX - r.left - GUTTER) / cw), y = Math.floor((e.clientY - r.top - RULER) / ch);
+  if (x < 0 || y < 0 || x >= S.cols || y >= S.rows) return null;
+  return { x, y };
+}
+let drag = null;
+cv.addEventListener('pointerdown', e => {
+  const c = cellAt(e); if (!c) return;
+  cv.setPointerCapture(e.pointerId);
+  const t = e.altKey ? 'pick' : S.tool;
+  if (t === 'pencil' || t === 'erase') { pushUndo(); setCell(c.x, c.y, t === 'erase' ? ' ' : S.brush); drag = { t, last: c }; }
+  else if (t === 'line' || t === 'rect' || t === 'box') { drag = { t, start: c }; updatePreview(c); }
+  else if (t === 'fill') { pushUndo(); flood(c.x, c.y, S.brush); }
+  else if (t === 'text') { S.cursor = { ...c, home: c.x }; }
+  else if (t === 'pick') { setBrush(S.grid[c.y][c.x] === ' ' ? S.brush : S.grid[c.y][c.x]); }
+  if (t !== 'text') S.cursor = null;
+  S.hover = c; draw(); updateGuide(); save();
+});
+cv.addEventListener('pointermove', e => {
+  const c = cellAt(e);
+  S.hover = c;
+  $('pos').textContent = c ? `Col ${c.x + 1}, line ${c.y + 1}` : 'Col –, line –';
+  if (drag && c) {
+    if (drag.t === 'pencil' || drag.t === 'erase') { lineCells(drag.last, c).forEach(([x, y]) => setCell(x, y, drag.t === 'erase' ? ' ' : S.brush)); drag.last = c; }
+    else updatePreview(c);
+  }
+  draw(); if (!S.cursor) updateGuide();
+});
+cv.addEventListener('pointerleave', () => { if (!drag) { S.hover = null; draw(); } });
+function updatePreview(end) {
+  drag.end = end;
+  if (drag.t === 'line') { const m = new Map(); const c = S.brush; lineCells(drag.start, end).forEach(([x, y]) => m.set(y * S.cols + x, c)); S.preview = m; }
+  else S.preview = rectCells(drag.start, end, drag.t);
+}
+cv.addEventListener('pointerup', () => {
+  if (drag && S.preview) { pushUndo(); S.preview.forEach((c, k) => setCell(k % S.cols, Math.floor(k / S.cols), c)); }
+  drag = null; S.preview = null; draw(); updateGuide(); save();
+});
+
+// ---- Keyboard palette ----
+function setBrush(c) {
+  if (!ALLOWED.has(c)) return;
+  S.brush = c; $('brushOut').textContent = c === ' ' ? '␣' : c;
+  document.querySelectorAll('.key[data-u]').forEach(k => k.classList.toggle('sel', k.dataset.u === c || k.dataset.s === c));
+  save();
+}
+function buildKeyboard() {
+  const wrap = $('kbRows'); wrap.innerHTML = '';
+  KB.forEach((row, i) => {
+    const r = document.createElement('div'); r.className = 'kb-row';
+    if (i === 2 || i === 3) { const sh = document.createElement('button'); sh.className = 'key shift wide'; sh.textContent = 'Shift'; sh.setAttribute('aria-pressed', S.shift); sh.onclick = toggleShift; r.appendChild(sh); }
+    row.forEach(([s, u]) => {
+      const k = document.createElement('button'); k.className = 'key'; k.dataset.s = s; k.dataset.u = u;
+      const isLetter = /[A-Z]/.test(s);
+      if (isLetter) { k.classList.add('single'); k.textContent = S.shift ? s : u; }
+      else k.innerHTML = `<span class="t ${S.shift ? '' : 'dim'}">${esc(s)}</span><span class="b ${S.shift ? 'dim' : ''}">${esc(u)}</span>`;
+      k.title = `${u}  ·  Shift: ${s}`;
+      k.onclick = () => setBrush(S.shift ? s : u);
+      r.appendChild(k);
+    });
+    wrap.appendChild(r);
+  });
+  const r = document.createElement('div'); r.className = 'kb-row'; r.style.paddingLeft = '150px';
+  const sp = document.createElement('button'); sp.className = 'key space'; sp.dataset.u = ' '; sp.dataset.s = ' '; sp.textContent = 'Space (blank)'; sp.onclick = () => setBrush(' ');
+  r.appendChild(sp); wrap.appendChild(r);
+  setBrush(S.brush);
+}
+function toggleShift() { S.shift = !S.shift; buildKeyboard(); }
+const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+// ---- Tools ----
+const HINTS = {
+  pencil: 'Drag to draw with the brush character.',
+  line: 'Drag a straight line in the brush character. There is no \\ key, so use . or \' steps for falling diagonals.',
+  rect: 'Drag a rectangle outline in the brush character.',
+  box: 'Drag a box drawn with + corners, - tops and I sides.',
+  fill: 'Click to fill a region of matching characters.',
+  text: 'Click a spot, then type. Return goes to the next line. Esc stops.',
+  erase: 'Drag to erase.',
+  pick: 'Click a character on the sheet to make it the brush. Alt-click works with any tool.',
+};
+function setTool(t) {
+  S.tool = t; if (t !== 'text') S.cursor = null;
+  document.querySelectorAll('.tool').forEach(b => b.setAttribute('aria-pressed', b.dataset.tool === t));
+  $('toolhint').textContent = HINTS[t]; draw();
+}
+document.querySelectorAll('.tool').forEach(b => b.onclick = () => setTool(b.dataset.tool));
+
+let msgT;
+function flash(m) { $('msg').textContent = m; clearTimeout(msgT); msgT = setTimeout(() => $('msg').textContent = '', 2600); }
+
+document.addEventListener('keydown', e => {
+  if (!$('typing').hidden) return typingKey(e);
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+  const mod = e.ctrlKey || e.metaKey;
+  if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
+  if (mod) return;
+  if (S.tool === 'text' && S.cursor) {
+    const c = S.cursor;
+    if (e.key === 'Escape') { S.cursor = null; }
+    else if (e.key === 'Enter') { c.y = Math.min(S.rows - 1, c.y + 1); c.x = c.home; }
+    else if (e.key === 'Backspace') { if (c.x > 0) c.x--; pushUndo(); setCell(c.x, c.y, ' '); }
+    else if (e.key === 'ArrowLeft') c.x = Math.max(0, c.x - 1);
+    else if (e.key === 'ArrowRight') c.x = Math.min(S.cols - 1, c.x + 1);
+    else if (e.key === 'ArrowUp') c.y = Math.max(0, c.y - 1);
+    else if (e.key === 'ArrowDown') c.y = Math.min(S.rows - 1, c.y + 1);
+    else if (e.key.length === 1) {
+      if (!ALLOWED.has(e.key)) { flash(`Your typewriter has no “${e.key}” key.`); e.preventDefault(); return; }
+      pushUndo(); setCell(c.x, c.y, e.key); if (c.x < S.cols - 1) c.x++;
+    } else return;
+    e.preventDefault(); draw(); updateGuide(); save(); return;
+  }
+  if (e.key.length === 1) {
+    if (ALLOWED.has(e.key)) { setBrush(e.key); e.preventDefault(); }
+    else flash(`Your typewriter has no “${e.key}” key.`);
+  } else if (e.key === 'Shift' && !S.shift) { S.shift = true; buildKeyboard(); }
+});
+document.addEventListener('keyup', e => { if (e.key === 'Shift' && S.shift) { S.shift = false; buildKeyboard(); } });
+
+// ---- Typing guide ----
+function runs(line) {
+  const t = line.replace(/\s+$/, ''); const out = [];
+  let i = 0;
+  while (i < t.length) {
+    let j = i; while (j < t.length && t[j] === t[i]) j++;
+    const n = j - i, c = t[i];
+    if (c === ' ') out.push({ type: 'sp', n });
+    else if (n >= 4) out.push({ type: 'rep', c, n });
+    else { const last = out[out.length - 1]; if (last && last.type === 'lit') last.s += c.repeat(n); else out.push({ type: 'lit', s: c.repeat(n) }); }
+    i = j;
+  }
+  return out;
+}
+const mark = s => [...s].map(c => needsShift(c) ? `<u>${esc(c)}</u>` : esc(c)).join('');
+function runsHTML(line) {
+  const r = runs(line);
+  if (!r.length) return '<span class="run sp">Blank line: just return</span>';
+  return r.map(x => x.type === 'sp' ? `<span class="run sp">${x.n} space${x.n > 1 ? 's' : ''}</span>`
+    : x.type === 'rep' ? `<span class="run rep">${mark(x.c)} × ${x.n}</span>`
+    : `<span class="run">${mark(x.s)}</span>`).join('');
+}
+function updateGuide() {
+  const y = S.cursor ? S.cursor.y : S.hover ? S.hover.y : null;
+  if (y == null) { $('guide').innerHTML = '<span class="legend">Hover over a line to see how to type it.</span>'; return; }
+  $('guide').innerHTML = `<span class="run sp">Line ${y + 1}</span>` + runsHTML(S.grid[y].join(''));
+}
+
+function lastLine() { let n = S.rows; while (n > 0 && !S.grid[n - 1].join('').trim()) n--; return Math.max(n, 1); }
+let wakeLock = null;
+function openTyping() {
+  S.typeLine = Math.min(S.typeLine || 0, lastLine() - 1);
+  $('typing').hidden = false; renderTyping();
+  try { navigator.wakeLock?.request('screen').then(w => wakeLock = w).catch(() => {}); } catch {}
+}
+function closeTyping() { $('typing').hidden = true; try { wakeLock?.release(); } catch {} wakeLock = null; }
+function renderTyping() {
+  const total = lastLine(), y = S.typeLine;
+  $('tLineNo').innerHTML = `Line ${y + 1} <small>of ${total}</small>`;
+  $('tProg').style.width = `${(y / Math.max(1, total - 1)) * 100}%`;
+  const show = i => i >= 0 && i < S.rows ? esc(S.grid[i].join('').replace(/\s+$/, '')) : '';
+  $('tPre').innerHTML = `<span class="ctx">${show(y - 1)}</span>\n${mark(S.grid[y].join('').replace(/\s+$/, '')) || ' '}\n<span class="ctx">${show(y + 1)}</span>`;
+  $('tGuide').innerHTML = runsHTML(S.grid[y].join(''));
+  $('tPrev').disabled = y === 0; $('tNext').textContent = y >= total - 1 ? 'Done' : 'Next line →';
+  save();
+}
+function stepTyping(d) {
+  const total = lastLine();
+  if (d > 0 && S.typeLine >= total - 1) { S.typeLine = 0; closeTyping(); save(); return; }
+  S.typeLine = Math.max(0, Math.min(total - 1, S.typeLine + d)); renderTyping();
+}
+function typingKey(e) {
+  if (e.key === ' ' || e.key === 'ArrowRight' || e.key === 'Enter') { e.preventDefault(); stepTyping(1); }
+  else if (e.key === 'ArrowLeft' || e.key === 'Backspace') { e.preventDefault(); stepTyping(-1); }
+  else if (e.key === 'Escape') closeTyping();
+}
+$('typeMode').onclick = openTyping; $('tClose').onclick = closeTyping;
+$('tNext').onclick = () => stepTyping(1); $('tPrev').onclick = () => stepTyping(-1);
+
+// ---- Sheet settings ----
+function resizeGrid(c, r) {
+  c = Math.max(5, Math.min(160, c | 0)); r = Math.max(3, Math.min(200, r | 0));
+  if (c === S.cols && r === S.rows) return;
+  pushUndo();
+  const g = blank(c, r);
+  for (let y = 0; y < Math.min(r, S.rows); y++) for (let x = 0; x < Math.min(c, S.cols); x++) g[y][x] = S.grid[y][x];
+  S.cols = c; S.rows = r; S.grid = g; resize(); save();
+}
+$('cols').onchange = () => resizeGrid(+$('cols').value, S.rows);
+$('rows').onchange = () => resizeGrid(S.cols, +$('rows').value);
+$('pitch').onchange = () => { S.pitch = +$('pitch').value; resize(); save(); };
+$('spacing').onchange = () => { S.spacing = +$('spacing').value; resize(); save(); };
+$('zoom').oninput = () => { S.zoom = +$('zoom').value; resize(); save(); };
+$('undo').onclick = undo; $('redo').onclick = redo;
+let clearArmed = false;
+$('clear').onclick = () => {
+  if (!clearArmed) { clearArmed = true; $('clear').textContent = 'Click again to clear'; setTimeout(() => { clearArmed = false; $('clear').textContent = 'Clear sheet'; }, 3000); return; }
+  clearArmed = false; $('clear').textContent = 'Clear sheet';
+  pushUndo(); S.grid = blank(S.cols, S.rows); S.typeLine = 0; draw(); updateGuide(); save();
+};
+
+// ---- Text in / out ----
+$('exportBtn').onclick = () => {
+  const t = toText(S.grid); $('io').value = t;
+  const done = () => { $('exportBtn').textContent = 'Copied'; setTimeout(() => $('exportBtn').textContent = 'Copy sheet as text', 1600); };
+  try { navigator.clipboard.writeText(t).then(done, () => { $('io').select(); flash('Copy blocked here. The text is selected below; press Ctrl+C.'); }); }
+  catch { $('io').select(); }
+};
+$('importBtn').onclick = () => {
+  const raw = $('io').value; if (!raw.trim()) { flash('Paste some text into the box first.'); return; }
+  let swapped = 0, dropped = 0;
+  const clean = [...raw].map(c => {
+    if (c === '\n' || c === '\r' || ALLOWED.has(c)) return c;
+    if (SUBS[c]) { swapped++; return SUBS[c]; }
+    dropped++; return ' ';
+  }).join('');
+  const lines = clean.split(/\r?\n/);
+  const w = Math.min(160, Math.max(S.cols, ...lines.map(l => l.length))), h = Math.min(200, Math.max(S.rows, lines.length));
+  pushUndo(); S.cols = w; S.rows = h; S.grid = fromText(clean, w, h);
+  $('cols').value = w; $('rows').value = h; resize(); updateGuide(); save();
+  const parts = []; if (swapped) parts.push(`${swapped} swapped`); if (dropped) parts.push(`${dropped} unknown characters blanked`);
+  $('msg').textContent = parts.length ? `Loaded. ${parts.join(', ')}.` : ''; if (!parts.length) flash('');
+};
+
+// ---- Image conversion ----
+let img = null;
+$('imgFile').onchange = e => {
+  const f = e.target.files[0]; if (!f) return;
+  const fr = new FileReader();
+  fr.onload = () => { const im = new Image(); im.onload = () => { img = im; $('imgApply').disabled = false; convert(); }; im.src = fr.result; };
+  fr.readAsDataURL(f);
+};
+['imgW', 'imgB', 'imgC'].forEach(id => $(id).oninput = () => { $(id + 'Out').textContent = $(id).value; });
+function convert() {
+  if (!img) return;
+  const cols = +$('imgW').value;
+  const rows = Math.min(200, Math.max(3, Math.round(cols * (img.height / img.width) * (cw / ch))));
+  const c = document.createElement('canvas'); c.width = cols; c.height = rows;
+  const x = c.getContext('2d', { willReadFrequently: true });
+  x.fillStyle = '#fff'; x.fillRect(0, 0, cols, rows); x.drawImage(img, 0, 0, cols, rows);
+  const d = x.getImageData(0, 0, cols, rows).data;
+  const ramp = [...$('ramp').value]; const B = +$('imgB').value, Cn = +$('imgC').value, inv = $('imgInv').checked;
+  const f = (259 * (Cn + 255)) / (255 * (259 - Cn));
+  pushUndo();
+  S.cols = cols; S.rows = rows; S.grid = blank(cols, rows);
+  for (let yy = 0; yy < rows; yy++) for (let xx = 0; xx < cols; xx++) {
+    const i = (yy * cols + xx) * 4;
+    let l = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    l = Math.max(0, Math.min(255, f * (l - 128) + 128 + B));
+    let darkness = 1 - l / 255; if (inv) darkness = 1 - darkness;
+    S.grid[yy][xx] = ramp[Math.min(ramp.length - 1, Math.round(darkness * (ramp.length - 1)))];
+  }
+  $('cols').value = cols; $('rows').value = rows; resize(); updateGuide(); save();
+}
+$('imgApply').onclick = convert;
+
+// ---- Theme changes re-render the canvas ----
+matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', draw);
+new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+// ---- Boot ----
+const saved = store.get('twa.v1');
+if (saved && saved.g) {
+  Object.assign(S, { cols: saved.cols, rows: saved.rows, pitch: saved.pitch || 10, spacing: saved.spacing || 1, zoom: saved.zoom || 1, brush: saved.brush || '#', typeLine: saved.typeLine || 0 });
+  S.grid = fromText(saved.g.join('\n'), S.cols, S.rows);
+} else {
+  S.grid = fromText(SAMPLE, S.cols, S.rows);
+  $('msg').className = 'note'; $('msg').textContent = 'Example drawing loaded. Clear the sheet to start your own.';
+  setTimeout(() => { $('msg').textContent = ''; $('msg').className = 'msg'; }, 8000);
+}
+$('cols').value = S.cols; $('rows').value = S.rows; $('pitch').value = S.pitch; $('spacing').value = S.spacing; $('zoom').value = S.zoom;
+$('imgW').value = Math.min(120, Math.max(20, S.cols)); $('imgWOut').textContent = $('imgW').value;
+buildKeyboard(); setTool('pencil'); updateGuide();
+resize();
+(document.fonts?.load(`20px "Courier Prime"`) || Promise.resolve()).then(draw, draw);
+})();
+</script>
