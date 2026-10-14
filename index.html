@@ -172,6 +172,10 @@ textarea.io { width: 100%; min-height: 120px; resize: vertical; font-family: var
 .typing .guide-line .run.sp { font-size: 0.8em; }
 .typing .hint { color: var(--muted); font-size: 13px; }
 .typing .blank { font-size: 1.3rem; color: var(--muted); font-family: var(--font-mono); }
+.speakbar { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; font-size: 13px; color: var(--muted); }
+.speakbar label { display: inline-flex; gap: 6px; align-items: center; }
+.btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.run.speaking, .lever.speaking { outline: 3px solid var(--cloth); outline-offset: 1px; }
 .kbd { font-family: var(--font-mono); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: var(--paper); font-size: 12px; }
 .card.ask { border-color: var(--accent); }
 textarea.desc { width: 100%; min-height: 64px; resize: vertical; padding: 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--paper); line-height: 1.4; }
@@ -319,10 +323,17 @@ textarea.desc { width: 100%; min-height: 64px; resize: vertical; padding: 8px; b
     <button class="btn primary" id="tNext">Next line →</button>
     <button class="btn" id="tClose">Back to drawing</button>
   </div>
+  <div class="speakbar" id="speakbar" hidden>
+    <button class="btn" id="tSpeak" aria-pressed="false">Read aloud</button>
+    <button class="btn" id="tRepeat" title="Read this line again (R)">Repeat line</button>
+    <label for="tRate">Speed <input type="range" id="tRate" min="0.6" max="1.5" step="0.1" value="0.9"></label>
+    <label for="tGap">Pause between steps <input type="range" id="tGap" min="0" max="3000" step="250" value="1000"><output id="tGapOut">1.0 s</output></label>
+    <label class="check"><input type="checkbox" id="tKeep"> Keep going to the next line</label>
+  </div>
   <div class="progress"><i id="tProg"></i></div>
   <div class="bigline"><pre id="tPre"></pre></div>
   <div class="guide-line" id="tGuide"></div>
-  <div class="hint">Type the line, hit return, then press <span class="kbd">Space</span> or <span class="kbd">→</span> here. <span class="kbd">←</span> goes back. Start each line at your left margin. Highlighted characters need Shift.</div>
+  <div class="hint">Type the line, hit return, then press <span class="kbd">Space</span> or <span class="kbd">→</span> here. <span class="kbd">←</span> goes back. <span class="kbd">R</span> repeats the line out loud. Start each line at your left margin. Highlighted characters need Shift.</div>
 </section>
 
 <script>
@@ -641,10 +652,10 @@ const markRow = y => { const t = S.grid[y].join('').replace(/\s+$/, ''); return 
 function runsHTML(y) {
   const r = runs(y);
   if (!r.length) return '<span class="run sp">Blank line: just return</span>';
-  return r.map(x => x.type === 'sp' ? `<span class="run sp">${x.n} space${x.n > 1 ? 's' : ''}</span>`
-    : x.type === 'lever' ? `<span class="lever ${x.ink}">Lever to ${x.ink}</span>`
-    : x.type === 'rep' ? `<span class="run rep">${mark(x.c, x.red)} × ${x.n}</span>`
-    : `<span class="run">${mark(x.s, x.red)}</span>`).join('');
+  return r.map((x, i) => x.type === 'sp' ? `<span class="run sp" data-step="${i}">${x.n} space${x.n > 1 ? 's' : ''}</span>`
+    : x.type === 'lever' ? `<span class="lever ${x.ink}" data-step="${i}">Lever to ${x.ink}</span>`
+    : x.type === 'rep' ? `<span class="run rep" data-step="${i}">${mark(x.c, x.red)} × ${x.n}</span>`
+    : `<span class="run" data-step="${i}">${mark(x.s, x.red)}</span>`).join('');
 }
 function updateGuide() {
   const y = S.cursor ? S.cursor.y : S.hover ? S.hover.y : null;
@@ -659,7 +670,7 @@ function openTyping() {
   $('typing').hidden = false; renderTyping();
   try { navigator.wakeLock?.request('screen').then(w => wakeLock = w).catch(() => {}); } catch {}
 }
-function closeTyping() { $('typing').hidden = true; try { wakeLock?.release(); } catch {} wakeLock = null; }
+function closeTyping() { stopSpeech(); $('typing').hidden = true; try { wakeLock?.release(); } catch {} wakeLock = null; }
 function renderTyping() {
   const total = lastLine(), y = S.typeLine;
   $('tLineNo').innerHTML = `Line ${y + 1} <small>of ${total}</small>`;
@@ -669,6 +680,7 @@ function renderTyping() {
   $('tGuide').innerHTML = runsHTML(y);
   $('tPrev').disabled = y === 0; $('tNext').textContent = y >= total - 1 ? 'Done' : 'Next line →';
   save();
+  speakLine(false);
 }
 function stepTyping(d) {
   const total = lastLine();
@@ -676,6 +688,9 @@ function stepTyping(d) {
   S.typeLine = Math.max(0, Math.min(total - 1, S.typeLine + d)); renderTyping();
 }
 function typingKey(e) {
+  const tg = (e.target.tagName || '').toLowerCase();
+  if (tg === 'input' || (tg === 'button' && (e.key === ' ' || e.key === 'Enter'))) return;
+  if (e.key === 'r' || e.key === 'R') { e.preventDefault(); speakLine(true); return; }
   if (e.key === ' ' || e.key === 'ArrowRight' || e.key === 'Enter') { e.preventDefault(); stepTyping(1); }
   else if (e.key === 'ArrowLeft' || e.key === 'Backspace') { e.preventDefault(); stepTyping(-1); }
   else if (e.key === 'Escape') closeTyping();
@@ -918,6 +933,66 @@ async function initAsk() {
   };
 }
 const updateAskSize = () => { $('askSize').textContent = `${S.cols} × ${S.rows}`; };
+
+// ---- Read aloud (browser speech) ----
+const synth = window.speechSynthesis;
+const CHAR_NAMES = { '.': 'period', ',': 'comma', "'": 'apostrophe', '"': 'quote mark', '!': 'exclamation mark', '?': 'question mark',
+  ':': 'colon', ';': 'semicolon', '-': 'dash', '_': 'underscore', '=': 'equals', '+': 'plus', '*': 'star', '@': 'at sign',
+  '#': 'hash', '$': 'dollar', '£': 'pound sign', '%': 'percent', '&': 'ampersand', '(': 'open bracket', ')': 'close bracket',
+  '/': 'slash', '¼': 'one quarter', '½': 'one half' };
+function sayChar(c) {
+  if (/[A-Z]/.test(c)) return 'capital ' + c;
+  if (/[a-z0-9]/.test(c)) return c;
+  const name = CHAR_NAMES[c] || c;
+  return needsShift(c) ? 'shift ' + name : name;
+}
+function sayStep(x) {
+  if (x.type === 'sp') return x.n === 1 ? '1 space' : `${x.n} spaces`;
+  if (x.type === 'lever') return `lever to ${x.ink}`;
+  if (x.type === 'rep') return `${sayChar(x.c)}, ${x.n} times`;
+  return [...x.s].map(sayChar).join(', ');
+}
+let speakOn = false, speakToken = 0, speakTimer = null;
+function markSpeaking(i) {
+  $('tGuide').querySelectorAll('.speaking').forEach(el => el.classList.remove('speaking'));
+  if (i != null) $('tGuide').querySelector(`[data-step="${i}"]`)?.classList.add('speaking');
+}
+function stopSpeech() { speakToken++; clearTimeout(speakTimer); try { synth?.cancel(); } catch {} markSpeaking(null); }
+function speakLine(force) {
+  if (!synth || (!speakOn && !force) || $('typing').hidden) return;
+  stopSpeech();
+  const token = speakToken, y = S.typeLine, total = lastLine(), steps = runs(y);
+  const rate = +$('tRate').value, gap = +$('tGap').value;
+  const queue = [{ text: `Line ${y + 1}.` }];
+  if (!steps.length) queue.push({ text: 'Blank line.' });
+  steps.forEach((x, i) => queue.push({ text: sayStep(x), i }));
+  queue.push({ text: y >= total - 1 ? 'Return. That was the last line.' : 'Return.' });
+  let k = 0;
+  const next = () => {
+    if (token !== speakToken) return;
+    if (k >= queue.length) {
+      markSpeaking(null);
+      if (speakOn && $('tKeep').checked && y < total - 1) speakTimer = setTimeout(() => { if (token === speakToken) stepTyping(1); }, Math.max(800, gap * 2));
+      return;
+    }
+    const item = queue[k++];
+    markSpeaking(item.i);
+    const u = new SpeechSynthesisUtterance(item.text); u.rate = rate;
+    u.onend = u.onerror = () => { if (token === speakToken) speakTimer = setTimeout(next, item.i == null ? 250 : gap); };
+    synth.speak(u);
+  };
+  next();
+}
+if (synth && window.SpeechSynthesisUtterance) {
+  $('speakbar').hidden = false;
+  $('tSpeak').onclick = () => {
+    speakOn = !speakOn; $('tSpeak').setAttribute('aria-pressed', speakOn);
+    $('tSpeak').textContent = speakOn ? 'Reading aloud' : 'Read aloud';
+    speakOn ? speakLine(true) : stopSpeech();
+  };
+  $('tRepeat').onclick = () => speakLine(true);
+  $('tGap').oninput = () => { $('tGapOut').textContent = (+$('tGap').value / 1000).toFixed(1) + ' s'; };
+}
 
 // ---- Theme changes re-render the canvas ----
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', draw);
