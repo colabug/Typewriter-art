@@ -94,9 +94,10 @@ header.top p { margin: 0; color: var(--muted); max-width: 60ch; }
 .lever.black { background: var(--ink); color: var(--bg); }
 .ribbon { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
 .ribbon button { border: 0; padding: 5px 10px; background: var(--paper); font-size: 12px; font-weight: 600; display: inline-flex; gap: 6px; align-items: center; }
-.ribbon button i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.ribbon button i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; box-shadow: 0 0 0 1.5px var(--paper); }
 .ribbon button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
 .brush output.red { color: var(--ribbon); }
+.facebar { display: inline-flex; gap: 6px; align-items: center; }
 .fixbar { border: 1px solid var(--warn); border-radius: var(--r); background: var(--panel); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
 .fixbar h2 { margin: 0; font-size: 13px; font-weight: 700; color: var(--warn); }
 .fixbar p { margin: 0; font-size: 12px; color: var(--muted); }
@@ -221,9 +222,9 @@ textarea.desc { width: 100%; min-height: 64px; resize: vertical; padding: 8px; b
       <label>Pitch
         <select id="pitch"><option value="10">Pica · 10 cpi</option><option value="11">11 cpi · Olympia SF</option><option value="12">Elite · 12 cpi</option></select>
       </label>
-      <label>Typeface
-        <select id="face"><option value="script">Script (cursive)</option><option value="pica">Courier (standard)</option></select>
-      </label>
+      <span class="facebar">Typeface
+        <span class="ribbon" role="group" aria-label="Typeface"><button id="faceScript" aria-pressed="true" style="font-family:var(--font-script);font-size:15px">Script</button><button id="facePica" aria-pressed="false" style="font-family:var(--font-mono)">Courier</button></span>
+      </span>
       <label>Line space
         <select id="spacing"><option value="1">1</option><option value="1.5">1½</option><option value="2">2</option><option value="3">3</option></select>
       </label>
@@ -712,11 +713,12 @@ $('cols').onchange = () => resizeGrid(+$('cols').value, S.rows);
 $('rows').onchange = () => resizeGrid(S.cols, +$('rows').value);
 $('pitch').onchange = () => { S.pitch = +$('pitch').value; resize(); save(); };
 function setFace(f) {
-  S.face = f === 'pica' ? 'pica' : 'script'; $('face').value = S.face;
+  S.face = f === 'pica' ? 'pica' : 'script';
+  $('faceScript').setAttribute('aria-pressed', S.face === 'script'); $('facePica').setAttribute('aria-pressed', S.face === 'pica');
   document.documentElement.style.setProperty('--font-sheet', S.face === 'script' ? 'var(--font-script)' : 'var(--font-mono)');
   draw(); save();
 }
-$('face').onchange = () => setFace($('face').value);
+$('faceScript').onclick = () => setFace('script'); $('facePica').onclick = () => setFace('pica');
 $('spacing').onchange = () => { S.spacing = +$('spacing').value; resize(); save(); };
 $('zoom').oninput = () => { S.zoom = +$('zoom').value; resize(); save(); };
 $('undo').onclick = undo; $('redo').onclick = redo;
